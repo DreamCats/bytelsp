@@ -113,7 +113,10 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 - 输出：引用位置列表（文件路径、起止行列）
 
 ### 6. get_hover
-- 输入：`code` + `file_path` + `line` + `col`（1-based）
+- 输入：`file_path` 必填
+  - 方式 A：`code` + `line` + `col`（1-based）
+  - 方式 B：`symbol`（函数/类型/变量名），无需 line/col
+  - 可选：`use_disk=true` 从磁盘读取 `file_path` 内容，避免 LLM 传入的 code 漂移
 - 输出：hover 文本（类型/签名/注释）
 
 ## 目录结构

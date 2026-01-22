@@ -348,14 +348,51 @@ func (s *Service) SearchSymbols(ctx context.Context, _ *sdk.CallToolRequest, inp
 }
 
 func (s *Service) GetHover(ctx context.Context, _ *sdk.CallToolRequest, input tools.GetHoverInput) (*sdk.CallToolResult, tools.GetHoverOutput, error) {
-	if input.Code == "" || input.FilePath == "" || input.Line < 1 || input.Col < 1 {
-		return nil, tools.GetHoverOutput{}, errors.New("code, file_path, line, col are required")
+	if input.FilePath == "" {
+		return nil, tools.GetHoverOutput{}, errors.New("file_path is required")
 	}
 	if err := s.Initialize(ctx); err != nil {
 		return nil, tools.GetHoverOutput{}, err
 	}
 
-	_, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
+	code := input.Code
+	absPath := ""
+	if input.UseDisk || code == "" {
+		path, err := s.resolveDiskPath(input.FilePath)
+		if err != nil {
+			if input.UseDisk || code == "" {
+				return nil, tools.GetHoverOutput{}, err
+			}
+		} else {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, tools.GetHoverOutput{}, err
+			}
+			code = string(data)
+			absPath = path
+		}
+	}
+	if code == "" {
+		return nil, tools.GetHoverOutput{}, errors.New("code is required (or set use_disk to read from file_path)")
+	}
+
+	line := input.Line
+	col := input.Col
+	if input.Symbol != "" {
+		if sl, sc, ok := tools.FindSymbolPosition(code, input.Symbol); ok {
+			line, col = sl, sc
+		} else {
+			return nil, tools.GetHoverOutput{}, errors.New("symbol not found in provided code")
+		}
+	} else if line < 1 || col < 1 {
+		return nil, tools.GetHoverOutput{}, errors.New("line and col are required when symbol is not provided")
+	}
+
+	filePath := input.FilePath
+	if absPath != "" {
+		filePath = absPath
+	}
+	_, uri, err := s.prepareDocument(ctx, filePath, code)
 	if err != nil {
 		return nil, tools.GetHoverOutput{}, err
 	}
@@ -366,13 +403,13 @@ func (s *Service) GetHover(ctx context.Context, _ *sdk.CallToolRequest, input to
 			"uri": uri,
 		},
 		"position": map[string]interface{}{
-			"line":      input.Line - 1,
-			"character": input.Col - 1,
+			"line":      line - 1,
+			"character": col - 1,
 		},
 	}
 	raw, err := s.client.SendRequest(ctx, "textDocument/hover", params)
 	if err != nil && shouldAdjustPosition(err) {
-		if nl, nc, ok := adjustPositionFromCode(input.Code, input.Line, input.Col); ok {
+		if nl, nc, ok := adjustPositionFromCode(code, line, col); ok {
 			params["position"] = map[string]interface{}{
 				"line":      nl - 1,
 				"character": nc - 1,
