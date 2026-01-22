@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "byte-lsp": {
+      "command": "/Users/bytedance/go/src/bcodinglsp/byte-lsp-mcp",
+      "args": []
+    }
+  }
+}
