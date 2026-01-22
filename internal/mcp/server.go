@@ -62,12 +62,12 @@ func (s *Service) Register(server *sdk.Server) {
 
 	sdk.AddTool(server, &sdk.Tool{
 		Name:        "go_to_definition",
-		Description: "Go to definition for the symbol at a 1-based line/column position.",
+		Description: "Go to definition. Provide file_path and either symbol (recommended) or line/col (1-based). Set use_disk=true to read file content from disk.",
 	}, s.GoToDefinition)
 
 	sdk.AddTool(server, &sdk.Tool{
 		Name:        "find_references",
-		Description: "Find references for the symbol at a 1-based line/column position.",
+		Description: "Find references. Provide file_path and either symbol (recommended) or line/col (1-based). Set use_disk=true to read file content from disk.",
 	}, s.FindReferences)
 
 	sdk.AddTool(server, &sdk.Tool{
@@ -77,7 +77,7 @@ func (s *Service) Register(server *sdk.Server) {
 
 	sdk.AddTool(server, &sdk.Tool{
 		Name:        "get_hover",
-		Description: "Get hover information (type/signature/docs) at a 1-based line/column position.",
+		Description: "Get hover info. Provide file_path and either symbol (recommended) or line/col (1-based). Set use_disk=true to read file content from disk.",
 	}, s.GetHover)
 
 	server.AddResource(&sdk.Resource{
