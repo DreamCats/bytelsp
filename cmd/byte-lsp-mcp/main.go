@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/dreamcats/bytelsp/internal/mcp"
 )
 
@@ -31,13 +33,21 @@ func main() {
 	}
 
 	ctx := context.Background()
-	server, err := mcp.NewServer(ctx)
+	service, err := mcp.NewService(ctx)
 	if err != nil {
-		log.Fatalf("failed to create server: %v", err)
+		log.Fatalf("failed to create service: %v", err)
 	}
-	defer server.Close()
+	defer service.Close()
 
-	if err := server.Serve(os.Stdin, os.Stdout); err != nil {
+	server := sdk.NewServer(&sdk.Implementation{
+		Name:       "byte-lsp-mcp",
+		Title:      "Byte LSP MCP (gopls-based Go analysis)",
+		Version:    version,
+		WebsiteURL: "https://github.com/dreamcats/bytelsp",
+	}, nil)
+	service.Register(server)
+
+	if err := server.Run(ctx, &sdk.StdioTransport{}); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

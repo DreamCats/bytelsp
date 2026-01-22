@@ -3,6 +3,14 @@
 byte-lsp-mcp 是一个基于 MCP（Model Context Protocol）的 Go 语言分析服务，
 通过 gopls 提供**准确的语义分析、诊断与代码导航**，可被 Claude Code、Cursor 等支持 MCP 的工具调用。
 
+## MCP 说明
+
+- 基于 `github.com/modelcontextprotocol/go-sdk` 实现
+- 传输方式：stdio（JSON-RPC 标准 MCP）
+- stdout 仅输出 MCP 响应，stderr 仅输出日志
+- gopls 使用 LSP stdio（Content-Length framing）
+- 资源：`byte-lsp://about` 提供服务简介
+
 ## 功能概览（MVP）
 
 - ✅ `analyze_code`：代码诊断（错误/警告/提示）
@@ -69,6 +77,7 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 ### 1. analyze_code
 - 输入：`code` + `file_path`
 - 输出：诊断列表（行列、严重级别、错误信息等）
+- `include_warnings`：是否包含 warning/info/hint（默认 false）
 
 ### 2. search_symbols 默认仅工作区
 - 默认只返回仓库内符号
@@ -88,6 +97,18 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 ### 3. 行列号容错
 - `go_to_definition` / `find_references` / `get_hover`
 - 若行列号落在空白或非标识符处，会自动尝试定位最近标识符并重试
+
+### 4. go_to_definition
+- 输入：`code` + `file_path` + `line` + `col`（1-based）
+- 输出：定义位置列表（文件路径、起止行列）
+
+### 5. find_references
+- 输入：`code` + `file_path` + `line` + `col`（1-based）
+- 输出：引用位置列表（文件路径、起止行列）
+
+### 6. get_hover
+- 输入：`code` + `file_path` + `line` + `col`（1-based）
+- 输出：hover 文本（类型/签名/注释）
 
 ## 目录结构
 

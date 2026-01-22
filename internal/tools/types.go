@@ -2,9 +2,9 @@ package tools
 
 // AnalyzeCodeInput for analyze_code.
 type AnalyzeCodeInput struct {
-	Code            string `json:"code"`
-	FilePath        string `json:"file_path"`
-	IncludeWarnings bool   `json:"include_warnings"`
+	Code            string `json:"code" jsonschema:"description=Go source code content"`
+	FilePath        string `json:"file_path" jsonschema:"description=File path for the code (absolute or workspace-relative)"`
+	IncludeWarnings bool   `json:"include_warnings" jsonschema:"description=Include warnings/info/hints in diagnostics,default=false"`
 }
 
 type Diagnostic struct {
@@ -26,10 +26,10 @@ type AnalyzeCodeOutput struct {
 
 // GoToDefinitionInput for go_to_definition.
 type GoToDefinitionInput struct {
-	Code     string `json:"code"`
-	FilePath string `json:"file_path"`
-	Line     int    `json:"line"`
-	Col      int    `json:"col"`
+	Code     string `json:"code" jsonschema:"description=Go source code content"`
+	FilePath string `json:"file_path" jsonschema:"description=File path for the code (absolute or workspace-relative)"`
+	Line     int    `json:"line" jsonschema:"description=1-based line number"`
+	Col      int    `json:"col" jsonschema:"description=1-based column number"`
 }
 
 type Location struct {
@@ -46,11 +46,11 @@ type GoToDefinitionOutput struct {
 
 // FindReferencesInput for find_references.
 type FindReferencesInput struct {
-	Code               string `json:"code"`
-	FilePath           string `json:"file_path"`
-	Line               int    `json:"line"`
-	Col                int    `json:"col"`
-	IncludeDeclaration bool   `json:"include_declaration"`
+	Code               string `json:"code" jsonschema:"description=Go source code content"`
+	FilePath           string `json:"file_path" jsonschema:"description=File path for the code (absolute or workspace-relative)"`
+	Line               int    `json:"line" jsonschema:"description=1-based line number"`
+	Col                int    `json:"col" jsonschema:"description=1-based column number"`
+	IncludeDeclaration bool   `json:"include_declaration" jsonschema:"description=Include declaration in results,default=false"`
 }
 
 type ReferenceResult struct {
@@ -64,8 +64,8 @@ type FindReferencesOutput struct {
 
 // SearchSymbolsInput for search_symbols.
 type SearchSymbolsInput struct {
-	Query           string `json:"query"`
-	IncludeExternal bool   `json:"include_external"`
+	Query           string `json:"query" jsonschema:"description=Symbol name or pattern"`
+	IncludeExternal bool   `json:"include_external" jsonschema:"description=Include symbols outside the workspace (stdlib/module cache),default=false"`
 }
 
 type SymbolInformation struct {
@@ -83,10 +83,10 @@ type SearchSymbolsOutput struct {
 
 // GetHoverInput for get_hover.
 type GetHoverInput struct {
-	Code     string `json:"code"`
-	FilePath string `json:"file_path"`
-	Line     int    `json:"line"`
-	Col      int    `json:"col"`
+	Code     string `json:"code" jsonschema:"description=Go source code content"`
+	FilePath string `json:"file_path" jsonschema:"description=File path for the code (absolute or workspace-relative)"`
+	Line     int    `json:"line" jsonschema:"description=1-based line number"`
+	Col      int    `json:"col" jsonschema:"description=1-based column number"`
 }
 
 type GetHoverOutput struct {

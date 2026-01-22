@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,13 +11,15 @@ import (
 	"sync"
 	"time"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/dreamcats/bytelsp/internal/gopls"
 	"github.com/dreamcats/bytelsp/internal/tools"
 	"github.com/dreamcats/bytelsp/internal/workspace"
 )
 
-// Server handles MCP tool calls and bridges to gopls.
-type Server struct {
+// Service implements gopls-backed MCP tools.
+type Service struct {
 	root        string
 	rootURI     string
 	client      *gopls.Client
@@ -30,7 +30,7 @@ type Server struct {
 	initErr  error
 }
 
-func NewServer(ctx context.Context) (*Server, error) {
+func NewService(ctx context.Context) (*Service, error) {
 	root, err := workspace.DetectRoot(".")
 	if err != nil {
 		return nil, err
@@ -40,19 +40,56 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}
 	rootURI := pathToURI(root)
 
-	return &Server{
+	return &Service{
 		root:        root,
 		rootURI:     rootURI,
 		diagnostics: newDiagHub(),
 	}, nil
 }
 
-func (s *Server) Serve(stdin, stdout interface{}) error {
-	transport := NewTransport(stdin.(io.Reader), stdout.(io.Writer), s)
-	return transport.Serve(context.Background())
+func (s *Service) Close() error {
+	if s.client != nil {
+		return s.client.Close()
+	}
+	return nil
 }
 
-func (s *Server) Initialize(ctx context.Context) error {
+func (s *Service) Register(server *sdk.Server) {
+	sdk.AddTool(server, &sdk.Tool{
+		Name:        "analyze_code",
+		Description: "Analyze Go code and return diagnostics (errors/warnings/info) using gopls.",
+	}, s.AnalyzeCode)
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name:        "go_to_definition",
+		Description: "Go to definition for the symbol at a 1-based line/column position.",
+	}, s.GoToDefinition)
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name:        "find_references",
+		Description: "Find references for the symbol at a 1-based line/column position.",
+	}, s.FindReferences)
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name:        "search_symbols",
+		Description: "Search symbols by name in the workspace (optionally include external symbols).",
+	}, s.SearchSymbols)
+
+	sdk.AddTool(server, &sdk.Tool{
+		Name:        "get_hover",
+		Description: "Get hover information (type/signature/docs) at a 1-based line/column position.",
+	}, s.GetHover)
+
+	server.AddResource(&sdk.Resource{
+		URI:         "byte-lsp://about",
+		Name:        "byte-lsp-mcp",
+		Title:       "Byte LSP MCP Server",
+		Description: "gopls-based Go analysis tools (diagnostics, definition, references, hover, symbol search).",
+		MIMEType:    "text/plain",
+	}, s.readAbout)
+}
+
+func (s *Service) Initialize(ctx context.Context) error {
 	s.initOnce.Do(func() {
 		client, err := gopls.NewClient(&gopls.Config{Workdir: s.root})
 		if err != nil {
@@ -77,46 +114,17 @@ func (s *Server) Initialize(ctx context.Context) error {
 	return s.initErr
 }
 
-func (s *Server) Close() error {
-	if s.client != nil {
-		return s.client.Close()
-	}
-	return nil
-}
-
-func (s *Server) HandleToolCall(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
-	if err := s.Initialize(ctx); err != nil {
-		return nil, err
-	}
-
-	switch name {
-	case "analyze_code":
-		return s.handleAnalyze(ctx, args)
-	case "go_to_definition":
-		return s.handleDefinition(ctx, args)
-	case "find_references":
-		return s.handleReferences(ctx, args)
-	case "search_symbols":
-		return s.handleSearchSymbols(ctx, args)
-	case "get_hover":
-		return s.handleHover(ctx, args)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", name)
-	}
-}
-
-func (s *Server) handleAnalyze(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	var input tools.AnalyzeCodeInput
-	if err := decodeArgs(args, &input); err != nil {
-		return nil, err
-	}
+func (s *Service) AnalyzeCode(ctx context.Context, _ *sdk.CallToolRequest, input tools.AnalyzeCodeInput) (*sdk.CallToolResult, tools.AnalyzeCodeOutput, error) {
 	if input.Code == "" || input.FilePath == "" {
-		return nil, errors.New("code and file_path are required")
+		return nil, tools.AnalyzeCodeOutput{}, errors.New("code and file_path are required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.AnalyzeCodeOutput{}, err
 	}
 
 	absPath, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
 	if err != nil {
-		return nil, err
+		return nil, tools.AnalyzeCodeOutput{}, err
 	}
 
 	pullCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
@@ -143,21 +151,20 @@ func (s *Server) handleAnalyze(ctx context.Context, args map[string]interface{})
 		diagnostics = []tools.Diagnostic{}
 	}
 
-	return &tools.AnalyzeCodeOutput{FilePath: absPath, Diagnostics: diagnostics}, nil
+	return nil, tools.AnalyzeCodeOutput{FilePath: absPath, Diagnostics: diagnostics}, nil
 }
 
-func (s *Server) handleDefinition(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	var input tools.GoToDefinitionInput
-	if err := decodeArgs(args, &input); err != nil {
-		return nil, err
-	}
+func (s *Service) GoToDefinition(ctx context.Context, _ *sdk.CallToolRequest, input tools.GoToDefinitionInput) (*sdk.CallToolResult, tools.GoToDefinitionOutput, error) {
 	if input.Code == "" || input.FilePath == "" || input.Line < 1 || input.Col < 1 {
-		return nil, errors.New("code, file_path, line, col are required")
+		return nil, tools.GoToDefinitionOutput{}, errors.New("code, file_path, line, col are required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.GoToDefinitionOutput{}, err
 	}
 
 	_, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
 	if err != nil {
-		return nil, err
+		return nil, tools.GoToDefinitionOutput{}, err
 	}
 	s.warmupDocument(ctx, uri)
 
@@ -181,27 +188,26 @@ func (s *Server) handleDefinition(ctx context.Context, args map[string]interface
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, tools.GoToDefinitionOutput{}, err
 	}
 	locs, err := tools.ParseLocations(raw)
 	if err != nil {
-		return nil, err
+		return nil, tools.GoToDefinitionOutput{}, err
 	}
-	return &tools.GoToDefinitionOutput{Locations: locs}, nil
+	return nil, tools.GoToDefinitionOutput{Locations: locs}, nil
 }
 
-func (s *Server) handleReferences(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	var input tools.FindReferencesInput
-	if err := decodeArgs(args, &input); err != nil {
-		return nil, err
-	}
+func (s *Service) FindReferences(ctx context.Context, _ *sdk.CallToolRequest, input tools.FindReferencesInput) (*sdk.CallToolResult, tools.FindReferencesOutput, error) {
 	if input.Code == "" || input.FilePath == "" || input.Line < 1 || input.Col < 1 {
-		return nil, errors.New("code, file_path, line, col are required")
+		return nil, tools.FindReferencesOutput{}, errors.New("code, file_path, line, col are required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.FindReferencesOutput{}, err
 	}
 
 	_, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
 	if err != nil {
-		return nil, err
+		return nil, tools.FindReferencesOutput{}, err
 	}
 	s.warmupDocument(ctx, uri)
 
@@ -228,27 +234,26 @@ func (s *Server) handleReferences(ctx context.Context, args map[string]interface
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, tools.FindReferencesOutput{}, err
 	}
 	locs, err := tools.ParseLocations(raw)
 	if err != nil {
-		return nil, err
+		return nil, tools.FindReferencesOutput{}, err
 	}
 
 	refs := make([]tools.ReferenceResult, 0, len(locs))
 	for _, loc := range locs {
 		refs = append(refs, tools.ReferenceResult{Location: loc})
 	}
-	return &tools.FindReferencesOutput{References: refs}, nil
+	return nil, tools.FindReferencesOutput{References: refs}, nil
 }
 
-func (s *Server) handleSearchSymbols(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	var input tools.SearchSymbolsInput
-	if err := decodeArgs(args, &input); err != nil {
-		return nil, err
-	}
+func (s *Service) SearchSymbols(ctx context.Context, _ *sdk.CallToolRequest, input tools.SearchSymbolsInput) (*sdk.CallToolResult, tools.SearchSymbolsOutput, error) {
 	if input.Query == "" {
-		return nil, errors.New("query is required")
+		return nil, tools.SearchSymbolsOutput{}, errors.New("query is required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.SearchSymbolsOutput{}, err
 	}
 
 	params := map[string]interface{}{
@@ -256,30 +261,29 @@ func (s *Server) handleSearchSymbols(ctx context.Context, args map[string]interf
 	}
 	raw, err := s.client.SendRequest(ctx, "workspace/symbol", params)
 	if err != nil {
-		return nil, err
+		return nil, tools.SearchSymbolsOutput{}, err
 	}
 	items, err := tools.ParseSymbols(raw)
 	if err != nil {
-		return nil, err
+		return nil, tools.SearchSymbolsOutput{}, err
 	}
 	if !input.IncludeExternal {
 		items = filterSymbolsInWorkspace(items, s.root)
 	}
-	return &tools.SearchSymbolsOutput{Symbols: items}, nil
+	return nil, tools.SearchSymbolsOutput{Symbols: items}, nil
 }
 
-func (s *Server) handleHover(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	var input tools.GetHoverInput
-	if err := decodeArgs(args, &input); err != nil {
-		return nil, err
-	}
+func (s *Service) GetHover(ctx context.Context, _ *sdk.CallToolRequest, input tools.GetHoverInput) (*sdk.CallToolResult, tools.GetHoverOutput, error) {
 	if input.Code == "" || input.FilePath == "" || input.Line < 1 || input.Col < 1 {
-		return nil, errors.New("code, file_path, line, col are required")
+		return nil, tools.GetHoverOutput{}, errors.New("code, file_path, line, col are required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.GetHoverOutput{}, err
 	}
 
 	_, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
 	if err != nil {
-		return nil, err
+		return nil, tools.GetHoverOutput{}, err
 	}
 	s.warmupDocument(ctx, uri)
 
@@ -303,24 +307,27 @@ func (s *Server) handleHover(ctx context.Context, args map[string]interface{}) (
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, tools.GetHoverOutput{}, err
 	}
 	out, err := tools.ParseHover(raw)
 	if err != nil {
-		return nil, err
+		return nil, tools.GetHoverOutput{}, err
 	}
-	return &out, nil
+	return nil, out, nil
 }
 
-func decodeArgs(args map[string]interface{}, out interface{}) error {
-	data, err := json.Marshal(args)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, out)
+func (s *Service) readAbout(ctx context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
+	content := "byte-lsp-mcp provides gopls-backed Go analysis tools: diagnostics, definition, references, hover, and symbol search."
+	return &sdk.ReadResourceResult{Contents: []*sdk.ResourceContents{
+		{
+			URI:      "byte-lsp://about",
+			MIMEType: "text/plain",
+			Text:     content,
+		},
+	}}, nil
 }
 
-func (s *Server) prepareDocument(ctx context.Context, filePath, code string) (string, string, error) {
+func (s *Service) prepareDocument(ctx context.Context, filePath, code string) (string, string, error) {
 	absPath, isVirtual, err := s.resolvePath(filePath)
 	if err != nil {
 		return "", "", err
@@ -340,18 +347,7 @@ func (s *Server) prepareDocument(ctx context.Context, filePath, code string) (st
 	return absPath, uri, nil
 }
 
-func (s *Server) warmupDocument(ctx context.Context, uri string) {
-	pullCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	params := map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri": uri,
-		},
-	}
-	_, _ = s.client.SendRequest(pullCtx, "textDocument/diagnostic", params)
-}
-
-func (s *Server) resolvePath(filePath string) (string, bool, error) {
+func (s *Service) resolvePath(filePath string) (string, bool, error) {
 	cleaned := filepath.Clean(filePath)
 	if cleaned == "" || cleaned == "." {
 		return "", false, errors.New("file_path cannot be empty")
@@ -383,6 +379,17 @@ func (s *Server) resolvePath(filePath string) (string, bool, error) {
 	return filepath.Join(virtualBase, cleaned), true, nil
 }
 
+func (s *Service) warmupDocument(ctx context.Context, uri string) {
+	pullCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	params := map[string]interface{}{
+		"textDocument": map[string]interface{}{
+			"uri": uri,
+		},
+	}
+	_, _ = s.client.SendRequest(pullCtx, "textDocument/diagnostic", params)
+}
+
 func filterErrors(diags []tools.Diagnostic) []tools.Diagnostic {
 	out := make([]tools.Diagnostic, 0, len(diags))
 	for _, d := range diags {
@@ -391,6 +398,77 @@ func filterErrors(diags []tools.Diagnostic) []tools.Diagnostic {
 		}
 	}
 	return out
+}
+
+func parsePublishDiagnostics(raw json.RawMessage) *publishDiagnostics {
+	var payload struct {
+		URI         string          `json:"uri"`
+		Diagnostics json.RawMessage `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	if payload.URI == "" {
+		return nil
+	}
+	diags, err := tools.ParseDiagnostics(payload.Diagnostics, payload.URI)
+	if err != nil {
+		return nil
+	}
+	return &publishDiagnostics{URI: payload.URI, Diagnostics: diags}
+}
+
+func pathToURI(path string) string {
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	return u.String()
+}
+
+type publishDiagnostics struct {
+	URI         string             `json:"uri"`
+	Diagnostics []tools.Diagnostic `json:"diagnostics"`
+}
+
+// diagHub stores latest diagnostics and allows waiting for updates.
+type diagHub struct {
+	mu      sync.Mutex
+	latest  map[string][]tools.Diagnostic
+	waiters map[string][]chan []tools.Diagnostic
+}
+
+func newDiagHub() *diagHub {
+	return &diagHub{
+		latest:  make(map[string][]tools.Diagnostic),
+		waiters: make(map[string][]chan []tools.Diagnostic),
+	}
+}
+
+func (h *diagHub) Update(uri string, diags []tools.Diagnostic) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.latest[uri] = diags
+	for _, ch := range h.waiters[uri] {
+		ch <- diags
+		close(ch)
+	}
+	delete(h.waiters, uri)
+}
+
+func (h *diagHub) Wait(uri string, timeout time.Duration) []tools.Diagnostic {
+	h.mu.Lock()
+	if diags, ok := h.latest[uri]; ok {
+		h.mu.Unlock()
+		return diags
+	}
+	ch := make(chan []tools.Diagnostic, 1)
+	h.waiters[uri] = append(h.waiters[uri], ch)
+	h.mu.Unlock()
+
+	select {
+	case diags := <-ch:
+		return diags
+	case <-time.After(timeout):
+		return nil
+	}
 }
 
 func filterSymbolsInWorkspace(items []tools.SymbolInformation, root string) []tools.SymbolInformation {
@@ -515,202 +593,4 @@ func isIdentStart(r rune) bool {
 
 func isIdentPart(r rune) bool {
 	return isIdentStart(r) || (r >= '0' && r <= '9')
-}
-
-type publishDiagnostics struct {
-	URI         string             `json:"uri"`
-	Diagnostics []tools.Diagnostic `json:"diagnostics"`
-}
-
-func parsePublishDiagnostics(raw json.RawMessage) *publishDiagnostics {
-	var payload struct {
-		URI         string          `json:"uri"`
-		Diagnostics json.RawMessage `json:"diagnostics"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil
-	}
-	if payload.URI == "" {
-		return nil
-	}
-	diags, err := tools.ParseDiagnostics(payload.Diagnostics, payload.URI)
-	if err != nil {
-		return nil
-	}
-	return &publishDiagnostics{URI: payload.URI, Diagnostics: diags}
-}
-
-func pathToURI(path string) string {
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
-	return u.String()
-}
-
-// diagHub stores latest diagnostics and allows waiting for updates.
-type diagHub struct {
-	mu      sync.Mutex
-	latest  map[string][]tools.Diagnostic
-	waiters map[string][]chan []tools.Diagnostic
-}
-
-func newDiagHub() *diagHub {
-	return &diagHub{
-		latest:  make(map[string][]tools.Diagnostic),
-		waiters: make(map[string][]chan []tools.Diagnostic),
-	}
-}
-
-func (h *diagHub) Update(uri string, diags []tools.Diagnostic) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.latest[uri] = diags
-	for _, ch := range h.waiters[uri] {
-		ch <- diags
-		close(ch)
-	}
-	delete(h.waiters, uri)
-}
-
-func (h *diagHub) Wait(uri string, timeout time.Duration) []tools.Diagnostic {
-	h.mu.Lock()
-	if diags, ok := h.latest[uri]; ok {
-		h.mu.Unlock()
-		return diags
-	}
-	ch := make(chan []tools.Diagnostic, 1)
-	h.waiters[uri] = append(h.waiters[uri], ch)
-	h.mu.Unlock()
-
-	select {
-	case diags := <-ch:
-		return diags
-	case <-time.After(timeout):
-		return nil
-	}
-}
-
-func toolList() []map[string]interface{} {
-	return []map[string]interface{}{
-		{
-			"name":        "analyze_code",
-			"description": "Analyze Go code and return diagnostics.",
-			"inputSchema": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"code": map[string]interface{}{
-						"type":        "string",
-						"description": "Go code to analyze",
-					},
-					"file_path": map[string]interface{}{
-						"type":        "string",
-						"description": "File path for the code (relative to workspace)",
-					},
-					"include_warnings": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Include warnings and hints",
-					},
-				},
-				"required": []string{"code", "file_path"},
-			},
-		},
-		{
-			"name":        "go_to_definition",
-			"description": "Go to definition for symbol at position.",
-			"inputSchema": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"code": map[string]interface{}{
-						"type":        "string",
-						"description": "Go code content",
-					},
-					"file_path": map[string]interface{}{
-						"type":        "string",
-						"description": "File path for the code",
-					},
-					"line": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based line number",
-					},
-					"col": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based column number",
-					},
-				},
-				"required": []string{"code", "file_path", "line", "col"},
-			},
-		},
-		{
-			"name":        "find_references",
-			"description": "Find references for symbol at position.",
-			"inputSchema": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"code": map[string]interface{}{
-						"type":        "string",
-						"description": "Go code content",
-					},
-					"file_path": map[string]interface{}{
-						"type":        "string",
-						"description": "File path for the code",
-					},
-					"line": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based line number",
-					},
-					"col": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based column number",
-					},
-					"include_declaration": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Include declaration in results",
-					},
-				},
-				"required": []string{"code", "file_path", "line", "col"},
-			},
-		},
-		{
-			"name":        "search_symbols",
-			"description": "Search symbols in workspace by name.",
-			"inputSchema": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"query": map[string]interface{}{
-						"type":        "string",
-						"description": "Symbol query",
-					},
-					"include_external": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Include symbols outside the workspace (stdlib, module cache)",
-					},
-				},
-				"required": []string{"query"},
-			},
-		},
-		{
-			"name":        "get_hover",
-			"description": "Get hover information at position.",
-			"inputSchema": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"code": map[string]interface{}{
-						"type":        "string",
-						"description": "Go code content",
-					},
-					"file_path": map[string]interface{}{
-						"type":        "string",
-						"description": "File path for the code",
-					},
-					"line": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based line number",
-					},
-					"col": map[string]interface{}{
-						"type":        "integer",
-						"description": "1-based column number",
-					},
-				},
-				"required": []string{"code", "file_path", "line", "col"},
-			},
-		},
-	}
 }
