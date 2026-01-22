@@ -28,6 +28,13 @@ Gopls Client (LSP stdio, Content-Length framing)
 cd cmd/byte-lsp-mcp && go build -o byte-lsp-mcp
 ```
 
+## 命令行参数
+
+```
+-h / -help     显示帮助
+-version       显示版本号
+```
+
 ## MCP 配置示例
 
 ### Claude Code / Claude Desktop
