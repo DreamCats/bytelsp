@@ -99,7 +99,10 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 - 若行列号落在空白或非标识符处，会自动尝试定位最近标识符并重试
 
 ### 4. go_to_definition
-- 输入：`code` + `file_path` + `line` + `col`（1-based）
+- 输入：`file_path` 必填
+  - 方式 A：`code` + `line` + `col`（1-based）
+  - 方式 B：`symbol`（函数/类型/变量名），无需 line/col
+  - 可选：`use_disk=true` 从磁盘读取 `file_path` 内容，避免 LLM 传入的 code 漂移
 - 输出：定义位置列表（文件路径、起止行列）
 
 ### 5. find_references
