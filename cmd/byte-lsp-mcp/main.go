@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/DreamCats/bytelsp/internal/mcp"
+	"github.com/dreamcats/bytelsp/internal/mcp"
 )
 
 const version = "0.1.0"

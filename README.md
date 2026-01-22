@@ -25,7 +25,7 @@ Gopls Client (LSP stdio, Content-Length framing)
 
 ```bash
 # 直接安装（需要 Go 1.20+）
-go install github.com/DreamCats/bytelsp/cmd/byte-lsp-mcp@latest
+go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 
 # 构建二进制
 cd cmd/byte-lsp-mcp && go build -o byte-lsp-mcp

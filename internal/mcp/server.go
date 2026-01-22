@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DreamCats/bytelsp/internal/gopls"
-	"github.com/DreamCats/bytelsp/internal/tools"
-	"github.com/DreamCats/bytelsp/internal/workspace"
+	"github.com/dreamcats/bytelsp/internal/gopls"
+	"github.com/dreamcats/bytelsp/internal/tools"
+	"github.com/dreamcats/bytelsp/internal/workspace"
 )
 
 // Server handles MCP tool calls and bridges to gopls.
