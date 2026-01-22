@@ -31,6 +31,17 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 cd cmd/byte-lsp-mcp && go build -o byte-lsp-mcp
 ```
 
+### 公司内网代理场景（临时绕过 GOPROXY）
+
+如果公司 GOPROXY 无法拉取 GitHub 模块，可临时绕过代理安装：
+
+```bash
+GOPROXY=direct \
+GOPRIVATE=github.com/dreamcats/bytelsp \
+GONOSUMDB=github.com/dreamcats/bytelsp \
+go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
+```
+
 ## 命令行参数
 
 ```
