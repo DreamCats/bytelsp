@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/bytedance/byte-lsp-mcp/internal/mcp"
+	"github.com/DreamCats/bytelsp/internal/mcp"
 )
 
 const version = "0.1.0"

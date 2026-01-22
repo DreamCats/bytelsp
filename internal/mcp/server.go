@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/byte-lsp-mcp/internal/gopls"
-	"github.com/bytedance/byte-lsp-mcp/internal/tools"
-	"github.com/bytedance/byte-lsp-mcp/internal/workspace"
+	"github.com/DreamCats/bytelsp/internal/gopls"
+	"github.com/DreamCats/bytelsp/internal/tools"
+	"github.com/DreamCats/bytelsp/internal/workspace"
 )
 
 // Server handles MCP tool calls and bridges to gopls.
