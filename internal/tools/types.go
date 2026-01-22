@@ -48,9 +48,11 @@ type GoToDefinitionOutput struct {
 type FindReferencesInput struct {
 	Code               string `json:"code" jsonschema:"Go source code content"`
 	FilePath           string `json:"file_path" jsonschema:"File path for the code (absolute or workspace-relative)"`
+	Symbol             string `json:"symbol,omitempty" jsonschema:"Optional symbol name to locate in the file (overrides line/col)"`
 	Line               int    `json:"line" jsonschema:"1-based line number"`
 	Col                int    `json:"col" jsonschema:"1-based column number"`
 	IncludeDeclaration bool   `json:"include_declaration" jsonschema:"Include declaration in results (default: false)"`
+	UseDisk            bool   `json:"use_disk" jsonschema:"Read code from file_path on disk instead of the provided code (default: false)"`
 }
 
 type ReferenceResult struct {

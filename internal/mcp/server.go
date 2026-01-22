@@ -198,14 +198,51 @@ func (s *Service) GoToDefinition(ctx context.Context, _ *sdk.CallToolRequest, in
 }
 
 func (s *Service) FindReferences(ctx context.Context, _ *sdk.CallToolRequest, input tools.FindReferencesInput) (*sdk.CallToolResult, tools.FindReferencesOutput, error) {
-	if input.Code == "" || input.FilePath == "" || input.Line < 1 || input.Col < 1 {
-		return nil, tools.FindReferencesOutput{}, errors.New("code, file_path, line, col are required")
+	if input.FilePath == "" {
+		return nil, tools.FindReferencesOutput{}, errors.New("file_path is required")
 	}
 	if err := s.Initialize(ctx); err != nil {
 		return nil, tools.FindReferencesOutput{}, err
 	}
 
-	_, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
+	code := input.Code
+	absPath := ""
+	if input.UseDisk || code == "" {
+		path, err := s.resolveDiskPath(input.FilePath)
+		if err != nil {
+			if input.UseDisk || code == "" {
+				return nil, tools.FindReferencesOutput{}, err
+			}
+		} else {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, tools.FindReferencesOutput{}, err
+			}
+			code = string(data)
+			absPath = path
+		}
+	}
+	if code == "" {
+		return nil, tools.FindReferencesOutput{}, errors.New("code is required (or set use_disk to read from file_path)")
+	}
+
+	line := input.Line
+	col := input.Col
+	if input.Symbol != "" {
+		if sl, sc, ok := tools.FindSymbolPosition(code, input.Symbol); ok {
+			line, col = sl, sc
+		} else {
+			return nil, tools.FindReferencesOutput{}, errors.New("symbol not found in provided code")
+		}
+	} else if line < 1 || col < 1 {
+		return nil, tools.FindReferencesOutput{}, errors.New("line and col are required when symbol is not provided")
+	}
+
+	filePath := input.FilePath
+	if absPath != "" {
+		filePath = absPath
+	}
+	_, uri, err := s.prepareDocument(ctx, filePath, code)
 	if err != nil {
 		return nil, tools.FindReferencesOutput{}, err
 	}
@@ -216,8 +253,8 @@ func (s *Service) FindReferences(ctx context.Context, _ *sdk.CallToolRequest, in
 			"uri": uri,
 		},
 		"position": map[string]interface{}{
-			"line":      input.Line - 1,
-			"character": input.Col - 1,
+			"line":      line - 1,
+			"character": col - 1,
 		},
 		"context": map[string]interface{}{
 			"includeDeclaration": input.IncludeDeclaration,
@@ -225,7 +262,7 @@ func (s *Service) FindReferences(ctx context.Context, _ *sdk.CallToolRequest, in
 	}
 	raw, err := s.client.SendRequest(ctx, "textDocument/references", params)
 	if err != nil && shouldAdjustPosition(err) {
-		if nl, nc, ok := adjustPositionFromCode(input.Code, input.Line, input.Col); ok {
+		if nl, nc, ok := adjustPositionFromCode(code, line, col); ok {
 			params["position"] = map[string]interface{}{
 				"line":      nl - 1,
 				"character": nc - 1,
@@ -377,6 +414,32 @@ func (s *Service) resolvePath(filePath string) (string, bool, error) {
 		return candidate, false, nil
 	}
 	return filepath.Join(virtualBase, cleaned), true, nil
+}
+
+func (s *Service) resolveDiskPath(filePath string) (string, error) {
+	cleaned := filepath.Clean(filePath)
+	if cleaned == "" || cleaned == "." {
+		return "", errors.New("file_path cannot be empty")
+	}
+
+	if filepath.IsAbs(cleaned) {
+		if _, err := os.Stat(cleaned); err == nil {
+			return cleaned, nil
+		} else {
+			return "", err
+		}
+	}
+
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
+		return "", errors.New("file_path escapes workspace; use absolute path")
+	}
+
+	candidate := filepath.Join(s.root, cleaned)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate, nil
+	} else {
+		return "", err
+	}
 }
 
 func (s *Service) warmupDocument(ctx context.Context, uri string) {
