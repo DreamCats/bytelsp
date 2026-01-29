@@ -12,7 +12,7 @@ import (
 	"github.com/dreamcats/bytelsp/internal/mcp"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 
 func main() {
 	log.SetOutput(os.Stderr)
