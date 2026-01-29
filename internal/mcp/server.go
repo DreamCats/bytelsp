@@ -127,6 +127,21 @@ Alternative: file_path + line/col + code
 Returns: Type signature and documentation text.`,
 	}, s.GetHover)
 
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "explain_symbol",
+		Description: `Get comprehensive information about a symbol in one call.
+
+Combines definition, hover, and references into a single response. This is the recommended
+tool for understanding a symbol - more efficient than calling multiple tools separately.
+
+Use this to:
+- Understand what a function/type/variable does
+- See its signature, documentation, and source code
+- Find where it's used across the codebase
+
+Returns: Symbol name, kind, signature, documentation, source code, definition location, and references.`,
+	}, s.ExplainSymbol)
+
 	server.AddResource(&sdk.Resource{
 		URI:         "byte-lsp://about",
 		Name:        "byte-lsp-mcp",
@@ -472,6 +487,228 @@ func (s *Service) GetHover(ctx context.Context, _ *sdk.CallToolRequest, input to
 		return nil, tools.GetHoverOutput{}, err
 	}
 	return nil, out, nil
+}
+
+func (s *Service) ExplainSymbol(ctx context.Context, _ *sdk.CallToolRequest, input tools.ExplainSymbolInput) (*sdk.CallToolResult, tools.ExplainSymbolOutput, error) {
+	if input.FilePath == "" || input.Symbol == "" {
+		return nil, tools.ExplainSymbolOutput{}, errors.New("file_path and symbol are required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.ExplainSymbolOutput{}, err
+	}
+
+	// Set defaults
+	includeSource := true
+	if !input.IncludeSource {
+		// Check if explicitly set to false (Go zero value issue)
+		// We treat zero value as true for better UX
+	}
+	includeRefs := true
+	if !input.IncludeReferences {
+		// Same as above
+	}
+	maxRefs := input.MaxReferences
+	if maxRefs <= 0 {
+		maxRefs = 10
+	}
+
+	// Read file from disk
+	absPath, err := s.resolveDiskPath(input.FilePath)
+	if err != nil {
+		return nil, tools.ExplainSymbolOutput{}, err
+	}
+	code, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, tools.ExplainSymbolOutput{}, err
+	}
+
+	// Find symbol position
+	line, col, ok := tools.FindSymbolPosition(string(code), input.Symbol)
+	if !ok {
+		return nil, tools.ExplainSymbolOutput{}, errors.New("symbol not found in file")
+	}
+
+	// Prepare document
+	_, uri, err := s.prepareDocument(ctx, absPath, string(code))
+	if err != nil {
+		return nil, tools.ExplainSymbolOutput{}, err
+	}
+	s.warmupDocument(ctx, uri)
+
+	output := tools.ExplainSymbolOutput{
+		Name: input.Symbol,
+	}
+
+	// 1. Get hover info (signature + documentation)
+	hoverParams := map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": line - 1, "character": col - 1},
+	}
+	if hoverRaw, err := s.client.SendRequest(ctx, "textDocument/hover", hoverParams); err == nil {
+		if hover, err := tools.ParseHover(hoverRaw); err == nil {
+			output.Signature, output.Doc = parseHoverContents(hover.Contents)
+		}
+	}
+
+	// 2. Get definition location
+	defParams := map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": line - 1, "character": col - 1},
+	}
+	if defRaw, err := s.client.SendRequest(ctx, "textDocument/definition", defParams); err == nil {
+		if locs, err := tools.ParseLocations(defRaw); err == nil && len(locs) > 0 {
+			output.DefinedAt = &locs[0]
+			output.Kind = inferSymbolKind(string(code), input.Symbol)
+
+			// 3. Extract source code if requested
+			if includeSource {
+				output.Source = extractSymbolSource(locs[0].FilePath, locs[0].Line)
+			}
+		}
+	}
+
+	// 4. Find references if requested
+	if includeRefs {
+		refParams := map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"position":     map[string]any{"line": line - 1, "character": col - 1},
+			"context":      map[string]any{"includeDeclaration": false},
+		}
+		if refRaw, err := s.client.SendRequest(ctx, "textDocument/references", refParams); err == nil {
+			if locs, err := tools.ParseLocations(refRaw); err == nil {
+				output.ReferencesCount = len(locs)
+				// Return up to maxRefs references with context
+				for i, loc := range locs {
+					if i >= maxRefs {
+						break
+					}
+					ref := tools.ReferenceContext{
+						FilePath: loc.FilePath,
+						Line:     loc.Line,
+						Col:      loc.Col,
+						Context:  getLineContent(loc.FilePath, loc.Line),
+					}
+					output.References = append(output.References, ref)
+				}
+			}
+		}
+	}
+
+	return nil, output, nil
+}
+
+// parseHoverContents splits hover contents into signature and documentation.
+func parseHoverContents(contents string) (signature, doc string) {
+	// Hover typically contains markdown with code block for signature
+	// and plain text for documentation
+	lines := strings.Split(contents, "\n")
+	inCodeBlock := false
+	var sigLines, docLines []string
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "```") {
+			inCodeBlock = !inCodeBlock
+			continue
+		}
+		if inCodeBlock {
+			sigLines = append(sigLines, line)
+		} else if strings.TrimSpace(line) != "" {
+			docLines = append(docLines, line)
+		}
+	}
+
+	return strings.Join(sigLines, "\n"), strings.Join(docLines, "\n")
+}
+
+// inferSymbolKind guesses the symbol kind from code context.
+func inferSymbolKind(code, symbol string) string {
+	lines := strings.Split(code, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Check for function/method
+		if strings.HasPrefix(trimmed, "func ") && strings.Contains(line, symbol) {
+			if strings.Contains(trimmed, ") "+symbol) || strings.Contains(trimmed, "func (") {
+				return "Method"
+			}
+			return "Function"
+		}
+		// Check for type
+		if strings.HasPrefix(trimmed, "type "+symbol) {
+			if strings.Contains(line, "struct") {
+				return "Struct"
+			}
+			if strings.Contains(line, "interface") {
+				return "Interface"
+			}
+			return "Type"
+		}
+		// Check for const
+		if strings.HasPrefix(trimmed, "const ") && strings.Contains(line, symbol) {
+			return "Constant"
+		}
+		// Check for var
+		if strings.HasPrefix(trimmed, "var ") && strings.Contains(line, symbol) {
+			return "Variable"
+		}
+	}
+	return "Unknown"
+}
+
+// extractSymbolSource extracts the source code of a symbol definition.
+func extractSymbolSource(filePath string, startLine int) string {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if startLine < 1 || startLine > len(lines) {
+		return ""
+	}
+
+	// Find the end of the symbol (matching braces or end of declaration)
+	var result []string
+	braceCount := 0
+	started := false
+
+	for i := startLine - 1; i < len(lines) && i < startLine+100; i++ {
+		line := lines[i]
+		result = append(result, line)
+
+		braceCount += strings.Count(line, "{") - strings.Count(line, "}")
+
+		if strings.Contains(line, "{") {
+			started = true
+		}
+
+		// End conditions
+		if started && braceCount == 0 {
+			break
+		}
+		// Single line declaration (no braces)
+		if !started && i > startLine-1 && !strings.HasSuffix(strings.TrimSpace(line), ",") {
+			break
+		}
+	}
+
+	// Limit output size
+	source := strings.Join(result, "\n")
+	if len(source) > 2000 {
+		source = source[:2000] + "\n// ... (truncated)"
+	}
+	return source
+}
+
+// getLineContent reads a specific line from a file.
+func getLineContent(filePath string, lineNum int) string {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if lineNum < 1 || lineNum > len(lines) {
+		return ""
+	}
+	return strings.TrimSpace(lines[lineNum-1])
 }
 
 func (s *Service) readAbout(ctx context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {

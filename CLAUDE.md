@@ -46,10 +46,11 @@ internal/
     root.go            # DetectRoot: 向上查找 go.mod/go.work
 ```
 
-## 已实现工具 (MVP)
+## 已实现工具
 
 | 工具 | LSP 方法 | 功能 |
 |------|----------|------|
+| `explain_symbol` | hover + definition + references | 一站式符号分析 (推荐) |
 | `analyze_code` | textDocument/diagnostic | 代码诊断 (错误/警告/提示) |
 | `go_to_definition` | textDocument/definition | 跳转到符号定义 |
 | `find_references` | textDocument/references | 查找符号引用 |

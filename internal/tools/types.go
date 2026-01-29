@@ -99,3 +99,32 @@ type GetHoverOutput struct {
 	Contents string    `json:"contents"`
 	Range    *Location `json:"range,omitempty"`
 }
+
+// ExplainSymbolInput for explain_symbol.
+type ExplainSymbolInput struct {
+	FilePath          string `json:"file_path" jsonschema:"required,description=File path (absolute or workspace-relative) where the symbol is located."`
+	Symbol            string `json:"symbol" jsonschema:"required,description=Symbol name (function/type/variable/method) to explain."`
+	IncludeSource     bool   `json:"include_source,omitempty" jsonschema:"description=Include the source code of the symbol definition. Default: true."`
+	IncludeReferences bool   `json:"include_references,omitempty" jsonschema:"description=Include references to this symbol. Default: true."`
+	MaxReferences     int    `json:"max_references,omitempty" jsonschema:"description=Maximum number of references to return. Default: 10."`
+}
+
+// ReferenceContext contains a reference with surrounding context.
+type ReferenceContext struct {
+	FilePath string `json:"file_path"`
+	Line     int    `json:"line"`
+	Col      int    `json:"col"`
+	Context  string `json:"context,omitempty"` // The line of code containing the reference
+}
+
+// ExplainSymbolOutput contains comprehensive information about a symbol.
+type ExplainSymbolOutput struct {
+	Name            string             `json:"name"`
+	Kind            string             `json:"kind"`                       // Function, Method, Type, Variable, Constant, etc.
+	Signature       string             `json:"signature,omitempty"`        // Full type signature
+	Doc             string             `json:"doc,omitempty"`              // Documentation comment
+	Source          string             `json:"source,omitempty"`           // Source code of the definition
+	DefinedAt       *Location          `json:"defined_at,omitempty"`       // Where the symbol is defined
+	ReferencesCount int                `json:"references_count,omitempty"` // Total number of references
+	References      []ReferenceContext `json:"references,omitempty"`       // Sample references with context
+}

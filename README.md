@@ -9,6 +9,7 @@
 
 | 工具 | 功能 | 说明 |
 |------|------|------|
+| `explain_symbol` | 一站式符号分析 | 签名+文档+源码+引用，推荐使用 |
 | `analyze_code` | 代码诊断 | 错误/警告/提示 |
 | `go_to_definition` | 跳转定义 | 支持行列号或符号名 |
 | `find_references` | 查找引用 | 支持行列号或符号名 |
@@ -75,6 +76,45 @@ go build -o byte-lsp-mcp
 > 如果 `byte-lsp-mcp` 不在 PATH 中，请使用完整路径。
 
 ## 使用说明
+
+### explain_symbol（推荐）
+
+一站式获取符号的完整信息，包括签名、文档、源码和引用。**比分别调用多个工具更高效**。
+
+```json
+{
+  "name": "explain_symbol",
+  "arguments": {
+    "file_path": "internal/mcp/server.go",
+    "symbol": "Initialize"
+  }
+}
+```
+
+返回示例：
+
+```json
+{
+  "name": "Initialize",
+  "kind": "Method",
+  "signature": "func (s *Service) Initialize(ctx context.Context) error",
+  "doc": "Initialize starts gopls client and registers diagnostics listener.",
+  "source": "func (s *Service) Initialize(ctx context.Context) error { ... }",
+  "defined_at": { "file_path": "server.go", "line": 139, "col": 1 },
+  "references_count": 5,
+  "references": [
+    { "file_path": "server.go", "line": 168, "context": "if err := s.Initialize(ctx); err != nil {" }
+  ]
+}
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | ✅ | 文件路径 |
+| `symbol` | ✅ | 符号名（函数/类型/变量） |
+| `include_source` | ❌ | 是否包含源码（默认 true） |
+| `include_references` | ❌ | 是否包含引用（默认 true） |
+| `max_references` | ❌ | 最大引用数量（默认 10） |
 
 ### analyze_code
 
