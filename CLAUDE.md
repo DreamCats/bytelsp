@@ -46,17 +46,13 @@ internal/
     root.go            # DetectRoot: 向上查找 go.mod/go.work
 ```
 
-## 已实现工具
+## 已实现工具 (3 个高价值工具)
 
 | 工具 | LSP 方法 | 功能 |
 |------|----------|------|
-| `explain_symbol` | hover + definition + references | 一站式符号分析 (推荐) |
-| `get_call_hierarchy` | callHierarchy/* | 调用链分析 (调用者/被调用者) |
-| `analyze_code` | textDocument/diagnostic | 代码诊断 (错误/警告/提示) |
-| `go_to_definition` | textDocument/definition | 跳转到符号定义 |
-| `find_references` | textDocument/references | 查找符号引用 |
-| `search_symbols` | workspace/symbol | 按名称搜索符号 (默认仅工作区) |
-| `get_hover` | textDocument/hover | 获取悬停信息 (类型/签名/文档) |
+| `search_symbols` | workspace/symbol | 符号搜索 - 探索代码库入口 |
+| `explain_symbol` | hover + definition + references | 一站式符号分析 - 理解代码 |
+| `get_call_hierarchy` | callHierarchy/* | 调用链分析 - 追踪代码流 |
 
 ## 构建和运行
 

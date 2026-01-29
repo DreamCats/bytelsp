@@ -3,19 +3,17 @@
 [![Go Version](https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-基于 MCP（Model Context Protocol）的 Go 语言分析服务，通过 gopls 提供**准确的语义分析、诊断与代码导航**，可被 Claude Code、Cursor 等支持 MCP 的工具调用。
+基于 MCP（Model Context Protocol）的 Go 语言分析服务，通过 gopls 提供**准确的语义分析与代码导航**，可被 Claude Code、Cursor 等支持 MCP 的工具调用。
 
 ## 功能特性
 
-| 工具 | 功能 | 说明 |
-|------|------|------|
-| `explain_symbol` | 一站式符号分析 | 签名+文档+源码+引用，推荐使用 |
-| `get_call_hierarchy` | 调用链分析 | 查看谁调用了函数/函数调用了谁 |
-| `analyze_code` | 代码诊断 | 错误/警告/提示 |
-| `go_to_definition` | 跳转定义 | 支持行列号或符号名 |
-| `find_references` | 查找引用 | 支持行列号或符号名 |
-| `search_symbols` | 符号搜索 | 默认仅工作区 |
-| `get_hover` | 悬浮信息 | 类型/签名/注释 |
+只提供 3 个高价值工具，覆盖 Go 代码分析的核心场景：
+
+| 工具 | 功能 | 使用场景 |
+|------|------|----------|
+| `search_symbols` | 符号搜索 | 探索代码库的入口，找到目标函数/类型 |
+| `explain_symbol` | 一站式符号分析 | 理解代码：签名+文档+源码+引用 |
+| `get_call_hierarchy` | 调用链分析 | 追踪代码流：谁调用了它/它调用了谁 |
 
 ## 环境要求
 
@@ -78,9 +76,27 @@ go build -o byte-lsp-mcp
 
 ## 使用说明
 
-### explain_symbol（推荐）
+### search_symbols - 探索入口
 
-一站式获取符号的完整信息，包括签名、文档、源码和引用。**比分别调用多个工具更高效**。
+搜索符号是分析代码的第一步。
+
+```json
+{
+  "name": "search_symbols",
+  "arguments": {
+    "query": "Handler"
+  }
+}
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `query` | ✅ | 搜索关键字，支持部分匹配 |
+| `include_external` | ❌ | 是否包含标准库/依赖（默认 false） |
+
+### explain_symbol - 理解代码
+
+一次调用获取符号的全部信息。
 
 ```json
 {
@@ -92,34 +108,24 @@ go build -o byte-lsp-mcp
 }
 ```
 
-返回示例：
-
-```json
-{
-  "name": "Initialize",
-  "kind": "Method",
-  "signature": "func (s *Service) Initialize(ctx context.Context) error",
-  "doc": "Initialize starts gopls client and registers diagnostics listener.",
-  "source": "func (s *Service) Initialize(ctx context.Context) error { ... }",
-  "defined_at": { "file_path": "server.go", "line": 139, "col": 1 },
-  "references_count": 5,
-  "references": [
-    { "file_path": "server.go", "line": 168, "context": "if err := s.Initialize(ctx); err != nil {" }
-  ]
-}
-```
+返回：
+- 签名和类型信息
+- 文档注释
+- 源代码
+- 定义位置
+- 引用列表
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `file_path` | ✅ | 文件路径 |
-| `symbol` | ✅ | 符号名（函数/类型/变量） |
+| `symbol` | ✅ | 符号名 |
 | `include_source` | ❌ | 是否包含源码（默认 true） |
 | `include_references` | ❌ | 是否包含引用（默认 true） |
 | `max_references` | ❌ | 最大引用数量（默认 10） |
 
-### get_call_hierarchy
+### get_call_hierarchy - 追踪调用
 
-分析函数/方法的调用关系。
+分析函数的调用关系。
 
 ```json
 {
@@ -132,107 +138,15 @@ go build -o byte-lsp-mcp
 }
 ```
 
-返回示例：
-
-```json
-{
-  "name": "Initialize",
-  "kind": "Method",
-  "file_path": "internal/mcp/server.go",
-  "line": 139,
-  "incoming": [
-    { "name": "AnalyzeCode", "kind": "Method", "file_path": "server.go", "line": 168, "context": "if err := s.Initialize(ctx); err != nil {" }
-  ],
-  "outgoing": [
-    { "name": "NewClient", "kind": "Function", "file_path": "client.go", "line": 25 },
-    { "name": "NewDocumentManager", "kind": "Function", "file_path": "documents.go", "line": 10 }
-  ]
-}
-```
+返回：
+- incoming: 谁调用了这个函数
+- outgoing: 这个函数调用了谁
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `file_path` | ✅ | 文件路径 |
 | `symbol` | ✅ | 函数或方法名 |
-| `direction` | ❌ | 方向：'incoming'(调用者)/'outgoing'(被调用)/'both'(默认) |
-| `depth` | ❌ | 遍历深度（默认 1，暂只支持 1 层） |
-
-### analyze_code
-
-分析代码并返回诊断信息。
-
-```json
-{
-  "name": "analyze_code",
-  "arguments": {
-    "code": "package main\n\nfunc main() {\n\tx := 1\n}",
-    "file_path": "main.go",
-    "include_warnings": true
-  }
-}
-```
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `code` | ✅ | Go 代码内容 |
-| `file_path` | ✅ | 文件路径 |
-| `include_warnings` | ❌ | 是否包含 warning/info/hint（默认 false） |
-
-### go_to_definition / find_references / get_hover
-
-文件内容**自动从磁盘读取**，支持两种定位方式：
-
-**方式一：符号名（推荐）**
-
-```json
-{
-  "name": "go_to_definition",
-  "arguments": {
-    "file_path": "internal/mcp/server.go",
-    "symbol": "Initialize"
-  }
-}
-```
-
-**方式二：行列号**
-
-```json
-{
-  "name": "go_to_definition",
-  "arguments": {
-    "file_path": "internal/mcp/server.go",
-    "line": 139,
-    "col": 20
-  }
-}
-```
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `file_path` | ✅ | 文件路径 |
-| `symbol` | ❌ | 符号名（推荐，与 line/col 二选一） |
-| `line` | ❌ | 行号（1-based） |
-| `col` | ❌ | 列号（1-based） |
-| `code` | ❌ | 仅当文件不存在时需要（如未保存的缓冲区） |
-
-### search_symbols
-
-搜索工作区符号。
-
-```json
-{
-  "name": "search_symbols",
-  "arguments": {
-    "query": "Handler",
-    "include_external": false
-  }
-}
-```
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `query` | ✅ | 搜索关键字 |
-| `include_external` | ❌ | 是否包含标准库/依赖（默认 false） |
+| `direction` | ❌ | 'incoming'/'outgoing'/'both'（默认） |
 
 ## 架构
 

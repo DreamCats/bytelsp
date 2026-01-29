@@ -55,114 +55,59 @@ func (s *Service) Close() error {
 }
 
 func (s *Service) Register(server *sdk.Server) {
-	sdk.AddTool(server, &sdk.Tool{
-		Name: "analyze_code",
-		Description: `Analyze Go code for compilation errors and diagnostics.
-
-Use this to:
-- Check if code compiles correctly
-- Find syntax errors, type mismatches, undefined references
-- Get warnings about unused variables, shadowed imports, etc.
-
-Returns: List of diagnostics with location, severity, and message.`,
-	}, s.AnalyzeCode)
-
-	sdk.AddTool(server, &sdk.Tool{
-		Name: "go_to_definition",
-		Description: `Navigate to where a symbol (function, type, variable, method) is defined.
-
-Use this to:
-- Find the implementation of a function
-- Locate type/struct definitions
-- Trace where a variable is declared
-
-Usage: file_path + symbol (recommended) or file_path + line/col
-File content is read from disk automatically.
-
-Returns: Definition location(s) with file path and position.`,
-	}, s.GoToDefinition)
-
-	sdk.AddTool(server, &sdk.Tool{
-		Name: "find_references",
-		Description: `Find all references to a symbol across the codebase.
-
-Use this to:
-- See where a function is called
-- Find all usages of a type or variable
-- Understand impact before refactoring
-
-Usage: file_path + symbol (recommended) or file_path + line/col
-File content is read from disk automatically.
-
-Returns: List of reference locations with file paths and positions.`,
-	}, s.FindReferences)
-
+	// Primary tool: search for symbols by name
 	sdk.AddTool(server, &sdk.Tool{
 		Name: "search_symbols",
-		Description: `Search for symbols (functions, types, variables) by name pattern.
+		Description: `Search for Go symbols (functions, types, variables, methods) by name pattern.
 
-Use this to:
-- Find a function when you know part of its name
-- Discover available types matching a pattern
-- Explore the codebase structure
+START HERE when you need to find code. This is your entry point for exploring a Go codebase.
 
-Supports partial matching (e.g., "Handler" finds "RequestHandler", "ErrorHandler").
-Default: workspace only. Set include_external=true for stdlib/dependencies.
+Examples:
+- "Handler" → finds RequestHandler, ErrorHandler, etc.
+- "New" → finds NewClient, NewService, etc.
+- "Parse" → finds ParseConfig, ParseJSON, etc.
 
-Returns: List of matching symbols with kind, location, and container.`,
+Usage: Just provide a query string. Results include symbol name, kind, file path, and line number.
+Then use explain_symbol to understand any symbol you find.`,
 	}, s.SearchSymbols)
 
-	sdk.AddTool(server, &sdk.Tool{
-		Name: "get_hover",
-		Description: `Get type information and documentation for a symbol.
-
-Use this to:
-- View function signatures and parameter types
-- Read documentation comments (godoc)
-- Understand what a type or variable represents
-
-Usage: file_path + symbol (recommended) or file_path + line/col
-File content is read from disk automatically.
-
-Returns: Type signature and documentation text.`,
-	}, s.GetHover)
-
+	// Primary tool: understand a symbol completely
 	sdk.AddTool(server, &sdk.Tool{
 		Name: "explain_symbol",
-		Description: `Get comprehensive information about a symbol in one call.
+		Description: `Get complete information about a Go symbol in one call.
 
-Combines definition, hover, and references into a single response. This is the recommended
-tool for understanding a symbol - more efficient than calling multiple tools separately.
+USE THIS to understand any function, type, method, or variable. Returns everything you need:
+- Signature and type information
+- Documentation comments
+- Source code
+- Definition location
+- Where it's used (references)
 
-Use this to:
-- Understand what a function/type/variable does
-- See its signature, documentation, and source code
-- Find where it's used across the codebase
+This replaces the need for separate definition/hover/references calls.
 
-Returns: Symbol name, kind, signature, documentation, source code, definition location, and references.`,
+Usage: file_path + symbol name. File content is read from disk automatically.`,
 	}, s.ExplainSymbol)
 
+	// Primary tool: understand call flow
 	sdk.AddTool(server, &sdk.Tool{
 		Name: "get_call_hierarchy",
-		Description: `Analyze the call hierarchy of a function or method.
+		Description: `Analyze who calls a function and what it calls.
 
-Use this to:
-- Find all callers of a function (who calls this?)
-- Find all callees of a function (what does this call?)
-- Understand code flow and dependencies
-- Assess impact before refactoring
+USE THIS to understand code flow:
+- "incoming": who calls this function? (callers)
+- "outgoing": what does this function call? (callees)
+- "both": show both directions (default)
 
-Usage: file_path + symbol
-Direction: 'incoming' (callers), 'outgoing' (callees), or 'both' (default)
+Essential for: tracing request flow, understanding dependencies, assessing refactoring impact.
 
-Returns: The target function and lists of incoming/outgoing calls with locations.`,
+Usage: file_path + symbol name. Direction defaults to "both".`,
 	}, s.GetCallHierarchy)
 
 	server.AddResource(&sdk.Resource{
 		URI:         "byte-lsp://about",
 		Name:        "byte-lsp-mcp",
 		Title:       "Byte LSP MCP Server",
-		Description: "gopls-based Go analysis tools (diagnostics, definition, references, hover, symbol search).",
+		Description: "Go language analysis tools: search_symbols (find code), explain_symbol (understand code), get_call_hierarchy (trace flow).",
 		MIMEType:    "text/plain",
 	}, s.readAbout)
 }
@@ -192,206 +137,6 @@ func (s *Service) Initialize(ctx context.Context) error {
 	return s.initErr
 }
 
-func (s *Service) AnalyzeCode(ctx context.Context, _ *sdk.CallToolRequest, input tools.AnalyzeCodeInput) (*sdk.CallToolResult, tools.AnalyzeCodeOutput, error) {
-	if input.Code == "" || input.FilePath == "" {
-		return nil, tools.AnalyzeCodeOutput{}, errors.New("code and file_path are required")
-	}
-	if err := s.Initialize(ctx); err != nil {
-		return nil, tools.AnalyzeCodeOutput{}, err
-	}
-
-	absPath, uri, err := s.prepareDocument(ctx, input.FilePath, input.Code)
-	if err != nil {
-		return nil, tools.AnalyzeCodeOutput{}, err
-	}
-
-	pullCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	params := map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri": uri,
-		},
-	}
-	raw, err := s.client.SendRequest(pullCtx, "textDocument/diagnostic", params)
-	var diagnostics []tools.Diagnostic
-	if err == nil {
-		diagnostics, _ = tools.ParseDiagnostics(raw, uri)
-	}
-	if len(diagnostics) == 0 {
-		if got := s.diagnostics.Wait(uri, 3*time.Second); len(got) > 0 {
-			diagnostics = got
-		}
-	}
-	if !input.IncludeWarnings {
-		diagnostics = filterErrors(diagnostics)
-	}
-	if diagnostics == nil {
-		diagnostics = []tools.Diagnostic{}
-	}
-
-	return nil, tools.AnalyzeCodeOutput{FilePath: absPath, Diagnostics: diagnostics}, nil
-}
-
-func (s *Service) GoToDefinition(ctx context.Context, _ *sdk.CallToolRequest, input tools.GoToDefinitionInput) (*sdk.CallToolResult, tools.GoToDefinitionOutput, error) {
-	if input.FilePath == "" {
-		return nil, tools.GoToDefinitionOutput{}, errors.New("file_path is required")
-	}
-	if err := s.Initialize(ctx); err != nil {
-		return nil, tools.GoToDefinitionOutput{}, err
-	}
-
-	// Default: read from disk. Only use provided code if file doesn't exist.
-	code := ""
-	absPath := ""
-	if path, err := s.resolveDiskPath(input.FilePath); err == nil {
-		if data, err := os.ReadFile(path); err == nil {
-			code = string(data)
-			absPath = path
-		}
-	}
-	// Fallback to provided code if disk read failed
-	if code == "" {
-		code = input.Code
-	}
-	if code == "" {
-		return nil, tools.GoToDefinitionOutput{}, errors.New("file not found and no code provided")
-	}
-
-	line := input.Line
-	col := input.Col
-	if input.Symbol != "" {
-		if sl, sc, ok := tools.FindSymbolPosition(code, input.Symbol); ok {
-			line, col = sl, sc
-		} else {
-			return nil, tools.GoToDefinitionOutput{}, errors.New("symbol not found in provided code")
-		}
-	} else if line < 1 || col < 1 {
-		return nil, tools.GoToDefinitionOutput{}, errors.New("line and col are required when symbol is not provided")
-	}
-
-	filePath := input.FilePath
-	if absPath != "" {
-		filePath = absPath
-	}
-	_, uri, err := s.prepareDocument(ctx, filePath, code)
-	if err != nil {
-		return nil, tools.GoToDefinitionOutput{}, err
-	}
-	s.warmupDocument(ctx, uri)
-
-	params := map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri": uri,
-		},
-		"position": map[string]interface{}{
-			"line":      line - 1,
-			"character": col - 1,
-		},
-	}
-	raw, err := s.client.SendRequest(ctx, "textDocument/definition", params)
-	if err != nil && shouldAdjustPosition(err) {
-		if nl, nc, ok := adjustPositionFromCode(code, line, col); ok {
-			params["position"] = map[string]interface{}{
-				"line":      nl - 1,
-				"character": nc - 1,
-			}
-			raw, err = s.client.SendRequest(ctx, "textDocument/definition", params)
-		}
-	}
-	if err != nil {
-		return nil, tools.GoToDefinitionOutput{}, err
-	}
-	locs, err := tools.ParseLocations(raw)
-	if err != nil {
-		return nil, tools.GoToDefinitionOutput{}, err
-	}
-	return nil, tools.GoToDefinitionOutput{Locations: locs}, nil
-}
-
-func (s *Service) FindReferences(ctx context.Context, _ *sdk.CallToolRequest, input tools.FindReferencesInput) (*sdk.CallToolResult, tools.FindReferencesOutput, error) {
-	if input.FilePath == "" {
-		return nil, tools.FindReferencesOutput{}, errors.New("file_path is required")
-	}
-	if err := s.Initialize(ctx); err != nil {
-		return nil, tools.FindReferencesOutput{}, err
-	}
-
-	// Default: read from disk. Only use provided code if file doesn't exist.
-	code := ""
-	absPath := ""
-	if path, err := s.resolveDiskPath(input.FilePath); err == nil {
-		if data, err := os.ReadFile(path); err == nil {
-			code = string(data)
-			absPath = path
-		}
-	}
-	// Fallback to provided code if disk read failed
-	if code == "" {
-		code = input.Code
-	}
-	if code == "" {
-		return nil, tools.FindReferencesOutput{}, errors.New("file not found and no code provided")
-	}
-
-	line := input.Line
-	col := input.Col
-	if input.Symbol != "" {
-		if sl, sc, ok := tools.FindSymbolPosition(code, input.Symbol); ok {
-			line, col = sl, sc
-		} else {
-			return nil, tools.FindReferencesOutput{}, errors.New("symbol not found in provided code")
-		}
-	} else if line < 1 || col < 1 {
-		return nil, tools.FindReferencesOutput{}, errors.New("line and col are required when symbol is not provided")
-	}
-
-	filePath := input.FilePath
-	if absPath != "" {
-		filePath = absPath
-	}
-	_, uri, err := s.prepareDocument(ctx, filePath, code)
-	if err != nil {
-		return nil, tools.FindReferencesOutput{}, err
-	}
-	s.warmupDocument(ctx, uri)
-
-	params := map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri": uri,
-		},
-		"position": map[string]interface{}{
-			"line":      line - 1,
-			"character": col - 1,
-		},
-		"context": map[string]interface{}{
-			"includeDeclaration": input.IncludeDeclaration,
-		},
-	}
-	raw, err := s.client.SendRequest(ctx, "textDocument/references", params)
-	if err != nil && shouldAdjustPosition(err) {
-		if nl, nc, ok := adjustPositionFromCode(code, line, col); ok {
-			params["position"] = map[string]interface{}{
-				"line":      nl - 1,
-				"character": nc - 1,
-			}
-			raw, err = s.client.SendRequest(ctx, "textDocument/references", params)
-		}
-	}
-	if err != nil {
-		return nil, tools.FindReferencesOutput{}, err
-	}
-	locs, err := tools.ParseLocations(raw)
-	if err != nil {
-		return nil, tools.FindReferencesOutput{}, err
-	}
-
-	refs := make([]tools.ReferenceResult, 0, len(locs))
-	for _, loc := range locs {
-		refs = append(refs, tools.ReferenceResult{Location: loc})
-	}
-	return nil, tools.FindReferencesOutput{References: refs}, nil
-}
-
 func (s *Service) SearchSymbols(ctx context.Context, _ *sdk.CallToolRequest, input tools.SearchSymbolsInput) (*sdk.CallToolResult, tools.SearchSymbolsOutput, error) {
 	if input.Query == "" {
 		return nil, tools.SearchSymbolsOutput{}, errors.New("query is required")
@@ -415,82 +160,6 @@ func (s *Service) SearchSymbols(ctx context.Context, _ *sdk.CallToolRequest, inp
 		items = filterSymbolsInWorkspace(items, s.root)
 	}
 	return nil, tools.SearchSymbolsOutput{Symbols: items}, nil
-}
-
-func (s *Service) GetHover(ctx context.Context, _ *sdk.CallToolRequest, input tools.GetHoverInput) (*sdk.CallToolResult, tools.GetHoverOutput, error) {
-	if input.FilePath == "" {
-		return nil, tools.GetHoverOutput{}, errors.New("file_path is required")
-	}
-	if err := s.Initialize(ctx); err != nil {
-		return nil, tools.GetHoverOutput{}, err
-	}
-
-	// Default: read from disk. Only use provided code if file doesn't exist.
-	code := ""
-	absPath := ""
-	if path, err := s.resolveDiskPath(input.FilePath); err == nil {
-		if data, err := os.ReadFile(path); err == nil {
-			code = string(data)
-			absPath = path
-		}
-	}
-	// Fallback to provided code if disk read failed
-	if code == "" {
-		code = input.Code
-	}
-	if code == "" {
-		return nil, tools.GetHoverOutput{}, errors.New("file not found and no code provided")
-	}
-
-	line := input.Line
-	col := input.Col
-	if input.Symbol != "" {
-		if sl, sc, ok := tools.FindSymbolPosition(code, input.Symbol); ok {
-			line, col = sl, sc
-		} else {
-			return nil, tools.GetHoverOutput{}, errors.New("symbol not found in provided code")
-		}
-	} else if line < 1 || col < 1 {
-		return nil, tools.GetHoverOutput{}, errors.New("line and col are required when symbol is not provided")
-	}
-
-	filePath := input.FilePath
-	if absPath != "" {
-		filePath = absPath
-	}
-	_, uri, err := s.prepareDocument(ctx, filePath, code)
-	if err != nil {
-		return nil, tools.GetHoverOutput{}, err
-	}
-	s.warmupDocument(ctx, uri)
-
-	params := map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri": uri,
-		},
-		"position": map[string]interface{}{
-			"line":      line - 1,
-			"character": col - 1,
-		},
-	}
-	raw, err := s.client.SendRequest(ctx, "textDocument/hover", params)
-	if err != nil && shouldAdjustPosition(err) {
-		if nl, nc, ok := adjustPositionFromCode(code, line, col); ok {
-			params["position"] = map[string]interface{}{
-				"line":      nl - 1,
-				"character": nc - 1,
-			}
-			raw, err = s.client.SendRequest(ctx, "textDocument/hover", params)
-		}
-	}
-	if err != nil {
-		return nil, tools.GetHoverOutput{}, err
-	}
-	out, err := tools.ParseHover(raw)
-	if err != nil {
-		return nil, tools.GetHoverOutput{}, err
-	}
-	return nil, out, nil
 }
 
 func (s *Service) ExplainSymbol(ctx context.Context, _ *sdk.CallToolRequest, input tools.ExplainSymbolInput) (*sdk.CallToolResult, tools.ExplainSymbolOutput, error) {
@@ -916,16 +585,6 @@ func (s *Service) warmupDocument(ctx context.Context, uri string) {
 	_, _ = s.client.SendRequest(pullCtx, "textDocument/diagnostic", params)
 }
 
-func filterErrors(diags []tools.Diagnostic) []tools.Diagnostic {
-	out := make([]tools.Diagnostic, 0, len(diags))
-	for _, d := range diags {
-		if d.Severity == "error" {
-			out = append(out, d)
-		}
-	}
-	return out
-}
-
 func parsePublishDiagnostics(raw json.RawMessage) *publishDiagnostics {
 	var payload struct {
 		URI         string          `json:"uri"`
@@ -1032,91 +691,3 @@ func inWorkspace(rootAbs, filePath string) bool {
 	return true
 }
 
-func shouldAdjustPosition(err error) bool {
-	msg := err.Error()
-	if strings.Contains(msg, "column is beyond end of line") {
-		return true
-	}
-	if strings.Contains(msg, "no identifier found") {
-		return true
-	}
-	if strings.Contains(msg, "invalid position") {
-		return true
-	}
-	return false
-}
-
-type identSpan struct {
-	start int
-	end   int
-}
-
-func adjustPositionFromCode(code string, line, col int) (int, int, bool) {
-	lines := strings.Split(code, "\n")
-	if line < 1 || line > len(lines) {
-		return 0, 0, false
-	}
-	if span, ok := pickSpan(lines[line-1], col); ok {
-		return line, span.start, true
-	}
-	for i := line; i < len(lines); i++ {
-		if span, ok := pickSpan(lines[i], 1); ok {
-			return i + 1, span.start, true
-		}
-	}
-	for i := line - 2; i >= 0; i-- {
-		if span, ok := pickSpan(lines[i], 1); ok {
-			return i + 1, span.start, true
-		}
-	}
-	return 0, 0, false
-}
-
-func pickSpan(line string, col int) (identSpan, bool) {
-	spans := findIdentifierSpans(line)
-	if len(spans) == 0 {
-		return identSpan{}, false
-	}
-	if col < 1 {
-		col = 1
-	}
-	for _, sp := range spans {
-		if col >= sp.start && col <= sp.end {
-			return sp, true
-		}
-	}
-	for _, sp := range spans {
-		if sp.start >= col {
-			return sp, true
-		}
-	}
-	return spans[len(spans)-1], true
-}
-
-func findIdentifierSpans(line string) []identSpan {
-	runes := []rune(line)
-	spans := make([]identSpan, 0)
-	i := 0
-	for i < len(runes) {
-		if !isIdentStart(runes[i]) {
-			i++
-			continue
-		}
-		start := i + 1
-		i++
-		for i < len(runes) && isIdentPart(runes[i]) {
-			i++
-		}
-		end := i
-		spans = append(spans, identSpan{start: start, end: end})
-	}
-	return spans
-}
-
-func isIdentStart(r rune) bool {
-	return r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
-}
-
-func isIdentPart(r rune) bool {
-	return isIdentStart(r) || (r >= '0' && r <= '9')
-}
