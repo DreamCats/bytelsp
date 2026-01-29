@@ -42,17 +42,19 @@ internal/
     types.go           # 所有工具的 Input/Output 类型定义 (含 jsonschema 标签)
     parse.go           # LSP 结果解析转换为 MCP 格式
     symbol.go          # FindSymbolPosition: 通过 AST 查找符号位置
+    imports.go         # explain_import: go list + AST 解析外部依赖类型
   workspace/
     root.go            # DetectRoot: 向上查找 go.mod/go.work
 ```
 
-## 已实现工具 (3 个高价值工具)
+## 已实现工具 (4 个高价值工具)
 
-| 工具 | LSP 方法 | 功能 |
+| 工具 | 实现方式 | 功能 |
 |------|----------|------|
-| `search_symbols` | workspace/symbol | 符号搜索 - 探索代码库入口 |
-| `explain_symbol` | hover + definition + references | 一站式符号分析 - 理解代码 |
-| `get_call_hierarchy` | callHierarchy/* | 调用链分析 - 追踪代码流 |
+| `search_symbols` | LSP workspace/symbol | 符号搜索 - 探索代码库入口 |
+| `explain_symbol` | LSP hover + definition + references | 一站式符号分析 - 理解代码 |
+| `explain_import` | go list + Go AST parser | 外部依赖类型解析 - 查看 RPC 入参/出参 |
+| `get_call_hierarchy` | LSP callHierarchy/* | 调用链分析 - 追踪代码流 |
 
 ## 构建和运行
 
@@ -81,12 +83,14 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 
 ## 工具输入模式
 
-所有位置相关工具 (`go_to_definition`, `find_references`, `get_hover`) 支持两种输入方式:
+### explain_symbol / get_call_hierarchy
+- `file_path` + `symbol`: 文件路径和符号名
+- 文件内容从磁盘自动读取,避免 LLM 传入 code 导致的 token 浪费
 
-1. **行列号模式**: `code` + `file_path` + `line` + `col` (1-based)
-2. **符号名模式**: `code` + `file_path` + `symbol` (自动通过 AST 查找位置)
-
-支持 `use_disk=true` 从磁盘读取 `file_path` 的内容,避免 LLM 传入的 code 漂移。
+### explain_import
+- `import_path` + `symbol`: Go import 路径和符号名
+- 通过 `go list -json` 解析包目录,再用 Go AST 解析源码
+- 不依赖 gopls,可直接解析 go/pkg/mod 中的外部依赖
 
 ## 核心组件说明
 
@@ -120,25 +124,16 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 | Severity 1/2/3/4 | "error"/"warning"/"info"/"hint" |
 | SymbolKind 1-26 | 字符串 ("File", "Module", "Function", 等) |
 
-## 诊断获取流程
+## explain_import 实现原理
 
-analyze_code 使用双通道获取诊断:
-1. 主动调用 `textDocument/diagnostic` (4s 超时)
-2. 监听 `textDocument/publishDiagnostics` 通知 (通过 diagHub 等待 3s)
-3. 取两者非空结果
+`explain_import` 工具不依赖 gopls,直接解析外部依赖:
 
-## 行列号容错机制
+1. 调用 `go list -json <import_path>` 获取包目录和 Go 文件列表
+2. 用 `go/parser` 解析所有 Go 文件为 AST
+3. 遍历 AST 查找目标符号 (FuncDecl/TypeSpec/ValueSpec)
+4. 提取类型签名、文档注释、结构体字段、接口方法
 
-当 LSP 返回 "column beyond end of line" 或 "no identifier found" 时:
-- `adjustPositionFromCode()`: 在当前行查找最近标识符
-- 向后扫描 5 行,向前扫描 5 行
-- `findIdentifierSpans()`: 提取行内所有标识符位置
-
-## 虚拟文档路径规则
-
-- 工作区内相对路径 → 检查磁盘存在 → 不存在则写入 `mcp_virtual/`
-- 工作区外绝对路径 → 提取 basename → 写入 `mcp_virtual/`
-- `..` 路径 → 安全化处理 → 写入 `mcp_virtual/`
+**适用场景**: 查看 thrift/protobuf 生成的大型文件中的类型定义,避免 LLM grep 大文件浪费 token。
 
 ## MCP 配置示例
 

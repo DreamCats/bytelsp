@@ -7,12 +7,13 @@
 
 ## 功能特性
 
-只提供 3 个高价值工具，覆盖 Go 代码分析的核心场景：
+只提供 4 个高价值工具，覆盖 Go 代码分析的核心场景：
 
 | 工具 | 功能 | 使用场景 |
 |------|------|----------|
 | `search_symbols` | 符号搜索 | 探索代码库的入口，找到目标函数/类型 |
 | `explain_symbol` | 一站式符号分析 | 理解代码：签名+文档+源码+引用 |
+| `explain_import` | 外部依赖类型解析 | 查看 RPC 入参/出参、thrift 生成代码等 |
 | `get_call_hierarchy` | 调用链分析 | 追踪代码流：谁调用了它/它调用了谁 |
 
 ## 环境要求
@@ -122,6 +123,33 @@ go build -o byte-lsp-mcp
 | `include_source` | ❌ | 是否包含源码（默认 true） |
 | `include_references` | ❌ | 是否包含引用（默认 true） |
 | `max_references` | ❌ | 最大引用数量（默认 10） |
+
+### explain_import - 解析外部依赖
+
+直接从导入包中解析类型/函数定义，无需 gopls 索引。
+
+```json
+{
+  "name": "explain_import",
+  "arguments": {
+    "import_path": "github.com/xxx/idl/user",
+    "symbol": "GetUserInfoRequest"
+  }
+}
+```
+
+返回：
+- 类型定义（完整签名）
+- 结构体字段（含 tag 和注释）
+- 接口方法
+- 文档注释
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `import_path` | ✅ | Go import 路径 (如 `encoding/json`) |
+| `symbol` | ✅ | 类型或函数名 |
+
+**典型场景**：查看 RPC 入参/出参结构、thrift/protobuf 生成的代码。
 
 ### get_call_hierarchy - 追踪调用
 

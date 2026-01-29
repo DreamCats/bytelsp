@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -103,11 +104,31 @@ Essential for: tracing request flow, understanding dependencies, assessing refac
 Usage: file_path + symbol name. Direction defaults to "both".`,
 	}, s.GetCallHierarchy)
 
+	// Tool for exploring external dependencies (go/pkg/mod)
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "explain_import",
+		Description: `Get type/function information from an imported package (including external dependencies).
+
+USE THIS when you need to understand types from:
+- Third-party libraries (e.g., protobuf/thrift generated code)
+- Company internal packages (e.g., RPC request/response types)
+- Standard library types
+
+This tool directly parses the source code without requiring gopls indexing,
+making it fast even for large generated files (like thrift IDL).
+
+Examples:
+- import_path: "encoding/json", symbol: "Decoder"
+- import_path: "github.com/xxx/idl/user", symbol: "GetUserInfoRequest"
+
+Returns: Type definition, fields (for structs), methods, documentation.`,
+	}, s.ExplainImport)
+
 	server.AddResource(&sdk.Resource{
 		URI:         "byte-lsp://about",
 		Name:        "byte-lsp-mcp",
 		Title:       "Byte LSP MCP Server",
-		Description: "Go language analysis tools: search_symbols (find code), explain_symbol (understand code), get_call_hierarchy (trace flow).",
+		Description: "Go language analysis tools: search_symbols, explain_symbol, explain_import, get_call_hierarchy.",
 		MIMEType:    "text/plain",
 	}, s.readAbout)
 }
@@ -369,6 +390,31 @@ func (s *Service) GetCallHierarchy(ctx context.Context, _ *sdk.CallToolRequest, 
 	}
 
 	return nil, output, nil
+}
+
+func (s *Service) ExplainImport(ctx context.Context, _ *sdk.CallToolRequest, input tools.ExplainImportInput) (*sdk.CallToolResult, tools.ExplainImportOutput, error) {
+	if input.ImportPath == "" || input.Symbol == "" {
+		return nil, tools.ExplainImportOutput{}, errors.New("import_path and symbol are required")
+	}
+
+	// Resolve import path to directory
+	pkg, err := tools.ResolveImportPath(s.root, input.ImportPath)
+	if err != nil {
+		return nil, tools.ExplainImportOutput{}, fmt.Errorf("failed to resolve import path: %w", err)
+	}
+
+	if pkg.Dir == "" {
+		return nil, tools.ExplainImportOutput{}, fmt.Errorf("package %s has no source directory", input.ImportPath)
+	}
+
+	// Parse the symbol from the package
+	result, err := tools.ParseSymbolFromPackage(pkg.Dir, pkg.GoFiles, input.Symbol)
+	if err != nil {
+		return nil, tools.ExplainImportOutput{}, err
+	}
+
+	result.ImportPath = input.ImportPath
+	return nil, *result, nil
 }
 
 // parseHoverContents splits hover contents into signature and documentation.

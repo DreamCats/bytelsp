@@ -129,6 +129,33 @@ type ExplainSymbolOutput struct {
 	References      []ReferenceContext `json:"references,omitempty"`       // Sample references with context
 }
 
+// ExplainImportInput for explain_import.
+type ExplainImportInput struct {
+	ImportPath string `json:"import_path" jsonschema:"required,description=Go import path (e.g. 'github.com/xxx/idl/user' or 'encoding/json')."`
+	Symbol     string `json:"symbol" jsonschema:"required,description=Type or function name to explain (e.g. 'GetUserInfoRequest')."`
+}
+
+// FieldInfo represents a struct field.
+type FieldInfo struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Tag  string `json:"tag,omitempty"`
+	Doc  string `json:"doc,omitempty"`
+}
+
+// ExplainImportOutput contains type information from an imported package.
+type ExplainImportOutput struct {
+	ImportPath string      `json:"import_path"`
+	Symbol     string      `json:"symbol"`
+	Kind       string      `json:"kind"`       // Struct, Interface, Function, Type, Const, Var
+	Signature  string      `json:"signature"`  // Full type definition
+	Doc        string      `json:"doc,omitempty"`
+	Fields     []FieldInfo `json:"fields,omitempty"`  // For structs
+	Methods    []string    `json:"methods,omitempty"` // Method signatures
+	FilePath   string      `json:"file_path,omitempty"`
+	Line       int         `json:"line,omitempty"`
+}
+
 // GetCallHierarchyInput for get_call_hierarchy.
 type GetCallHierarchyInput struct {
 	FilePath  string `json:"file_path" jsonschema:"required,description=File path where the function/method is located."`
