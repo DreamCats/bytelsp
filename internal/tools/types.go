@@ -30,8 +30,8 @@ type GoToDefinitionInput struct {
 	Symbol   string `json:"symbol,omitempty" jsonschema:"description=Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
 	Line     int    `json:"line,omitempty" jsonschema:"description=1-based line number. Required if symbol is not provided."`
 	Col      int    `json:"col,omitempty" jsonschema:"description=1-based column number. Required if symbol is not provided."`
-	Code     string `json:"code,omitempty" jsonschema:"description=Go source code content. Required unless use_disk=true."`
-	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"description=Read file content from disk instead of code parameter. Recommended for existing files."`
+	Code     string `json:"code,omitempty" jsonschema:"description=Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
+	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"description=Deprecated: file is now read from disk by default. This field is ignored."`
 }
 
 type Location struct {
@@ -52,8 +52,8 @@ type FindReferencesInput struct {
 	Symbol             string `json:"symbol,omitempty" jsonschema:"description=Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
 	Line               int    `json:"line,omitempty" jsonschema:"description=1-based line number. Required if symbol is not provided."`
 	Col                int    `json:"col,omitempty" jsonschema:"description=1-based column number. Required if symbol is not provided."`
-	Code               string `json:"code,omitempty" jsonschema:"description=Go source code content. Required unless use_disk=true."`
-	UseDisk            bool   `json:"use_disk,omitempty" jsonschema:"description=Read file content from disk instead of code parameter. Recommended for existing files."`
+	Code               string `json:"code,omitempty" jsonschema:"description=Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
+	UseDisk            bool   `json:"use_disk,omitempty" jsonschema:"description=Deprecated: file is now read from disk by default. This field is ignored."`
 	IncludeDeclaration bool   `json:"include_declaration,omitempty" jsonschema:"description=Include the symbol declaration in results. Default: false."`
 }
 
@@ -91,8 +91,8 @@ type GetHoverInput struct {
 	Symbol   string `json:"symbol,omitempty" jsonschema:"description=Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
 	Line     int    `json:"line,omitempty" jsonschema:"description=1-based line number. Required if symbol is not provided."`
 	Col      int    `json:"col,omitempty" jsonschema:"description=1-based column number. Required if symbol is not provided."`
-	Code     string `json:"code,omitempty" jsonschema:"description=Go source code content. Required unless use_disk=true."`
-	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"description=Read file content from disk instead of code parameter. Recommended for existing files."`
+	Code     string `json:"code,omitempty" jsonschema:"description=Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
+	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"description=Deprecated: file is now read from disk by default. This field is ignored."`
 }
 
 type GetHoverOutput struct {

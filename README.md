@@ -139,31 +139,29 @@ go build -o byte-lsp-mcp
 
 ### go_to_definition / find_references / get_hover
 
-支持两种定位方式：
+文件内容**自动从磁盘读取**，支持两种定位方式：
 
-**方式一：行列号**
+**方式一：符号名（推荐）**
 
 ```json
 {
   "name": "go_to_definition",
   "arguments": {
-    "code": "...",
-    "file_path": "main.go",
-    "line": 10,
-    "col": 5
+    "file_path": "internal/mcp/server.go",
+    "symbol": "Initialize"
   }
 }
 ```
 
-**方式二：符号名**
+**方式二：行列号**
 
 ```json
 {
   "name": "go_to_definition",
   "arguments": {
-    "code": "...",
-    "file_path": "main.go",
-    "symbol": "HandleRequest"
+    "file_path": "internal/mcp/server.go",
+    "line": 139,
+    "col": 20
   }
 }
 ```
@@ -171,11 +169,10 @@ go build -o byte-lsp-mcp
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `file_path` | ✅ | 文件路径 |
-| `code` | ✅* | Go 代码内容（`use_disk=true` 时可省略） |
+| `symbol` | ❌ | 符号名（推荐，与 line/col 二选一） |
 | `line` | ❌ | 行号（1-based） |
 | `col` | ❌ | 列号（1-based） |
-| `symbol` | ❌ | 符号名（与 line/col 二选一） |
-| `use_disk` | ❌ | 从磁盘读取文件内容（默认 false） |
+| `code` | ❌ | 仅当文件不存在时需要（如未保存的缓冲区） |
 
 ### search_symbols
 

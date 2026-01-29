@@ -76,8 +76,8 @@ Use this to:
 - Locate type/struct definitions
 - Trace where a variable is declared
 
-Recommended usage: file_path + symbol + use_disk=true
-Alternative: file_path + line/col + code
+Usage: file_path + symbol (recommended) or file_path + line/col
+File content is read from disk automatically.
 
 Returns: Definition location(s) with file path and position.`,
 	}, s.GoToDefinition)
@@ -91,8 +91,8 @@ Use this to:
 - Find all usages of a type or variable
 - Understand impact before refactoring
 
-Recommended usage: file_path + symbol + use_disk=true
-Alternative: file_path + line/col + code
+Usage: file_path + symbol (recommended) or file_path + line/col
+File content is read from disk automatically.
 
 Returns: List of reference locations with file paths and positions.`,
 	}, s.FindReferences)
@@ -121,8 +121,8 @@ Use this to:
 - Read documentation comments (godoc)
 - Understand what a type or variable represents
 
-Recommended usage: file_path + symbol + use_disk=true
-Alternative: file_path + line/col + code
+Usage: file_path + symbol (recommended) or file_path + line/col
+File content is read from disk automatically.
 
 Returns: Type signature and documentation text.`,
 	}, s.GetHover)
@@ -224,25 +224,21 @@ func (s *Service) GoToDefinition(ctx context.Context, _ *sdk.CallToolRequest, in
 		return nil, tools.GoToDefinitionOutput{}, err
 	}
 
-	code := input.Code
+	// Default: read from disk. Only use provided code if file doesn't exist.
+	code := ""
 	absPath := ""
-	if input.UseDisk || code == "" {
-		path, err := s.resolveDiskPath(input.FilePath)
-		if err != nil {
-			if input.UseDisk || code == "" {
-				return nil, tools.GoToDefinitionOutput{}, err
-			}
-		} else {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil, tools.GoToDefinitionOutput{}, err
-			}
+	if path, err := s.resolveDiskPath(input.FilePath); err == nil {
+		if data, err := os.ReadFile(path); err == nil {
 			code = string(data)
 			absPath = path
 		}
 	}
+	// Fallback to provided code if disk read failed
 	if code == "" {
-		return nil, tools.GoToDefinitionOutput{}, errors.New("code is required (or set use_disk to read from file_path)")
+		code = input.Code
+	}
+	if code == "" {
+		return nil, tools.GoToDefinitionOutput{}, errors.New("file not found and no code provided")
 	}
 
 	line := input.Line
@@ -304,25 +300,21 @@ func (s *Service) FindReferences(ctx context.Context, _ *sdk.CallToolRequest, in
 		return nil, tools.FindReferencesOutput{}, err
 	}
 
-	code := input.Code
+	// Default: read from disk. Only use provided code if file doesn't exist.
+	code := ""
 	absPath := ""
-	if input.UseDisk || code == "" {
-		path, err := s.resolveDiskPath(input.FilePath)
-		if err != nil {
-			if input.UseDisk || code == "" {
-				return nil, tools.FindReferencesOutput{}, err
-			}
-		} else {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil, tools.FindReferencesOutput{}, err
-			}
+	if path, err := s.resolveDiskPath(input.FilePath); err == nil {
+		if data, err := os.ReadFile(path); err == nil {
 			code = string(data)
 			absPath = path
 		}
 	}
+	// Fallback to provided code if disk read failed
 	if code == "" {
-		return nil, tools.FindReferencesOutput{}, errors.New("code is required (or set use_disk to read from file_path)")
+		code = input.Code
+	}
+	if code == "" {
+		return nil, tools.FindReferencesOutput{}, errors.New("file not found and no code provided")
 	}
 
 	line := input.Line
@@ -417,25 +409,21 @@ func (s *Service) GetHover(ctx context.Context, _ *sdk.CallToolRequest, input to
 		return nil, tools.GetHoverOutput{}, err
 	}
 
-	code := input.Code
+	// Default: read from disk. Only use provided code if file doesn't exist.
+	code := ""
 	absPath := ""
-	if input.UseDisk || code == "" {
-		path, err := s.resolveDiskPath(input.FilePath)
-		if err != nil {
-			if input.UseDisk || code == "" {
-				return nil, tools.GetHoverOutput{}, err
-			}
-		} else {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil, tools.GetHoverOutput{}, err
-			}
+	if path, err := s.resolveDiskPath(input.FilePath); err == nil {
+		if data, err := os.ReadFile(path); err == nil {
 			code = string(data)
 			absPath = path
 		}
 	}
+	// Fallback to provided code if disk read failed
 	if code == "" {
-		return nil, tools.GetHoverOutput{}, errors.New("code is required (or set use_disk to read from file_path)")
+		code = input.Code
+	}
+	if code == "" {
+		return nil, tools.GetHoverOutput{}, errors.New("file not found and no code provided")
 	}
 
 	line := input.Line
