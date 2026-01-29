@@ -1,47 +1,36 @@
 # byte-lsp-mcp
 
-byte-lsp-mcp 是一个基于 MCP（Model Context Protocol）的 Go 语言分析服务，
-通过 gopls 提供**准确的语义分析、诊断与代码导航**，可被 Claude Code、Cursor 等支持 MCP 的工具调用。
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## MCP 说明
+基于 MCP（Model Context Protocol）的 Go 语言分析服务，通过 gopls 提供**准确的语义分析、诊断与代码导航**，可被 Claude Code、Cursor 等支持 MCP 的工具调用。
 
-- 基于 `github.com/modelcontextprotocol/go-sdk` 实现
-- 传输方式：stdio（JSON-RPC 标准 MCP）
-- stdout 仅输出 MCP 响应，stderr 仅输出日志
-- gopls 使用 LSP stdio（Content-Length framing）
-- 资源：`byte-lsp://about` 提供服务简介
+## 功能特性
 
-## 功能概览（MVP）
+| 工具 | 功能 | 说明 |
+|------|------|------|
+| `analyze_code` | 代码诊断 | 错误/警告/提示 |
+| `go_to_definition` | 跳转定义 | 支持行列号或符号名 |
+| `find_references` | 查找引用 | 支持行列号或符号名 |
+| `search_symbols` | 符号搜索 | 默认仅工作区 |
+| `get_hover` | 悬浮信息 | 类型/签名/注释 |
 
-- ✅ `analyze_code`：代码诊断（错误/警告/提示）
-- ✅ `go_to_definition`：跳转定义
-- ✅ `find_references`：查找引用
-- ✅ `search_symbols`：符号搜索（默认仅工作区）
-- ✅ `get_hover`：悬浮信息
+## 环境要求
 
-## 架构
+- Go 1.23+
+- gopls（自动调用，需在 PATH 中）
 
-```
-MCP stdio (JSON-RPC 一行一条)
-    ↓
-Server + Tool Handlers
-    ↓
-Gopls Client (LSP stdio, Content-Length framing)
-```
+## 安装
 
-## 安装与运行
+### 从 GitHub 安装
 
 ```bash
-# 直接安装（需要 Go 1.23+）
 go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
-
-# 构建二进制
-cd cmd/byte-lsp-mcp && go build -o byte-lsp-mcp
 ```
 
-### 公司内网代理场景（临时绕过 GOPROXY）
+### 公司内网场景
 
-如果公司 GOPROXY 无法拉取 GitHub 模块，可临时绕过代理安装：
+如果公司 GOPROXY 无法拉取 GitHub 模块：
 
 ```bash
 GOPROXY=direct \
@@ -52,109 +41,164 @@ go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 
 ### 从 GitLab 安装
 
-**方式一：HTTPS 模块路径**（适用于 GitLab 配置了 Go Module Proxy）
+```bash
+# 克隆并安装
+git clone git@code.byted.org:maifeng/bytelsp.git
+cd bytelsp/cmd/byte-lsp-mcp && go install
+```
+
+### 从源码构建
 
 ```bash
-# 如果 GitLab 支持 HTTPS 模块访问
-go install code.byted.org/maifeng/bytelsp/cmd/byte-lsp-mcp@latest
+git clone https://github.com/DreamCats/bytelsp.git
+cd bytelsp/cmd/byte-lsp-mcp
+go build -o byte-lsp-mcp
 ```
 
-**方式二：手动克隆**（推荐）
-
-```bash
-# 克隆 GitLab 仓库
-git clone git@code.byted.org:maifeng/bytelsp.git /tmp/bytelsp
-cd /tmp/bytelsp
-
-# 安装到 $GOPATH/bin
-cd cmd/byte-lsp-mcp && go install
-```
-
-## 命令行参数
-
-```
--h / -help     显示帮助
--version       显示版本号
-```
-
-## MCP 配置示例
+## 配置
 
 ### Claude Code / Claude Desktop
+
+在 MCP 配置文件中添加：
 
 ```json
 {
   "mcpServers": {
     "byte-lsp": {
-      "command": "/path/to/byte-lsp-mcp",
+      "command": "byte-lsp-mcp",
       "args": []
     }
   }
 }
 ```
 
+> 如果 `byte-lsp-mcp` 不在 PATH 中，请使用完整路径。
+
 ## 使用说明
 
-### 1. analyze_code
-- 输入：`code` + `file_path`
-- 输出：诊断列表（行列、严重级别、错误信息等）
-- `include_warnings`：是否包含 warning/info/hint（默认 false）
+### analyze_code
 
-### 2. search_symbols 默认仅工作区
-- 默认只返回仓库内符号
-- 想扩展到标准库/模块缓存：`include_external: true`
+分析代码并返回诊断信息。
 
-示例：
 ```json
 {
-  "name": "search_symbols",
+  "name": "analyze_code",
   "arguments": {
-    "query": "main",
-    "include_external": true
+    "code": "package main\n\nfunc main() {\n\tx := 1\n}",
+    "file_path": "main.go",
+    "include_warnings": true
   }
 }
 ```
 
-### 3. 行列号容错
-- `go_to_definition` / `find_references` / `get_hover`
-- 若行列号落在空白或非标识符处，会自动尝试定位最近标识符并重试
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `code` | ✅ | Go 代码内容 |
+| `file_path` | ✅ | 文件路径 |
+| `include_warnings` | ❌ | 是否包含 warning/info/hint（默认 false） |
 
-### 4. go_to_definition
-- 输入：`file_path` 必填
-  - 方式 A：`code` + `line` + `col`（1-based）
-  - 方式 B：`symbol`（函数/类型/变量名），无需 line/col
-  - 可选：`use_disk=true` 从磁盘读取 `file_path` 内容，避免 LLM 传入的 code 漂移
-- 输出：定义位置列表（文件路径、起止行列）
+### go_to_definition / find_references / get_hover
 
-### 5. find_references
-- 输入：`file_path` 必填
-  - 方式 A：`code` + `line` + `col`（1-based）
-  - 方式 B：`symbol`（函数/类型/变量名），无需 line/col
-  - 可选：`use_disk=true` 从磁盘读取 `file_path` 内容，避免 LLM 传入的 code 漂移
-- 输出：引用位置列表（文件路径、起止行列）
+支持两种定位方式：
 
-### 6. get_hover
-- 输入：`file_path` 必填
-  - 方式 A：`code` + `line` + `col`（1-based）
-  - 方式 B：`symbol`（函数/类型/变量名），无需 line/col
-  - 可选：`use_disk=true` 从磁盘读取 `file_path` 内容，避免 LLM 传入的 code 漂移
-- 输出：hover 文本（类型/签名/注释）
+**方式一：行列号**
+
+```json
+{
+  "name": "go_to_definition",
+  "arguments": {
+    "code": "...",
+    "file_path": "main.go",
+    "line": 10,
+    "col": 5
+  }
+}
+```
+
+**方式二：符号名**
+
+```json
+{
+  "name": "go_to_definition",
+  "arguments": {
+    "code": "...",
+    "file_path": "main.go",
+    "symbol": "HandleRequest"
+  }
+}
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | ✅ | 文件路径 |
+| `code` | ✅* | Go 代码内容（`use_disk=true` 时可省略） |
+| `line` | ❌ | 行号（1-based） |
+| `col` | ❌ | 列号（1-based） |
+| `symbol` | ❌ | 符号名（与 line/col 二选一） |
+| `use_disk` | ❌ | 从磁盘读取文件内容（默认 false） |
+
+### search_symbols
+
+搜索工作区符号。
+
+```json
+{
+  "name": "search_symbols",
+  "arguments": {
+    "query": "Handler",
+    "include_external": false
+  }
+}
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `query` | ✅ | 搜索关键字 |
+| `include_external` | ❌ | 是否包含标准库/依赖（默认 false） |
+
+## 架构
+
+```
+┌─────────────────────────────────────┐
+│  Claude Code / Cursor / MCP Client │
+└──────────────┬──────────────────────┘
+               │ stdio (JSON-RPC)
+               ▼
+┌─────────────────────────────────────┐
+│         byte-lsp-mcp Server         │
+│  ┌───────────┐  ┌────────────────┐  │
+│  │Tool Handle│  │Document Manager│  │
+│  └─────┬─────┘  └───────┬────────┘  │
+└────────┼────────────────┼───────────┘
+         │ LSP stdio      │
+         ▼                ▼
+┌─────────────────────────────────────┐
+│              gopls                  │
+└─────────────────────────────────────┘
+```
 
 ## 目录结构
 
 ```
-cmd/byte-lsp-mcp/        # CLI 入口
-internal/
-  ├── gopls/             # LSP 客户端
-  ├── mcp/               # MCP 服务器与传输
-  ├── tools/             # 输入输出类型与解析
-  └── workspace/         # 工作区识别
+.
+├── cmd/byte-lsp-mcp/     # CLI 入口
+└── internal/
+    ├── gopls/            # gopls 客户端（LSP 通信）
+    ├── mcp/              # MCP 服务器（工具注册与处理）
+    ├── tools/            # 类型定义与结果解析
+    └── workspace/        # 工作区检测
 ```
 
-## 设计要点
+## 命令行参数
 
-- 所有 MCP 响应只写 stdout，日志只写 stderr
-- 临时代码写入工作区下 `mcp_virtual/`，确保 gopls 有完整的模块上下文
+```
+byte-lsp-mcp [options]
+
+Options:
+  -h, -help     显示帮助
+  -version      显示版本号
+```
 
 ## License
 
-MIT
+[MIT](LICENSE)
