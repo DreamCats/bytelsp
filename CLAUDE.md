@@ -51,6 +51,7 @@ internal/
 | 工具 | LSP 方法 | 功能 |
 |------|----------|------|
 | `explain_symbol` | hover + definition + references | 一站式符号分析 (推荐) |
+| `get_call_hierarchy` | callHierarchy/* | 调用链分析 (调用者/被调用者) |
 | `analyze_code` | textDocument/diagnostic | 代码诊断 (错误/警告/提示) |
 | `go_to_definition` | textDocument/definition | 跳转到符号定义 |
 | `find_references` | textDocument/references | 查找符号引用 |

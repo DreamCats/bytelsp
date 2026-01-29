@@ -142,6 +142,22 @@ Use this to:
 Returns: Symbol name, kind, signature, documentation, source code, definition location, and references.`,
 	}, s.ExplainSymbol)
 
+	sdk.AddTool(server, &sdk.Tool{
+		Name: "get_call_hierarchy",
+		Description: `Analyze the call hierarchy of a function or method.
+
+Use this to:
+- Find all callers of a function (who calls this?)
+- Find all callees of a function (what does this call?)
+- Understand code flow and dependencies
+- Assess impact before refactoring
+
+Usage: file_path + symbol
+Direction: 'incoming' (callers), 'outgoing' (callees), or 'both' (default)
+
+Returns: The target function and lists of incoming/outgoing calls with locations.`,
+	}, s.GetCallHierarchy)
+
 	server.AddResource(&sdk.Resource{
 		URI:         "byte-lsp://about",
 		Name:        "byte-lsp-mcp",
@@ -578,6 +594,107 @@ func (s *Service) ExplainSymbol(ctx context.Context, _ *sdk.CallToolRequest, inp
 					}
 					output.References = append(output.References, ref)
 				}
+			}
+		}
+	}
+
+	return nil, output, nil
+}
+
+func (s *Service) GetCallHierarchy(ctx context.Context, _ *sdk.CallToolRequest, input tools.GetCallHierarchyInput) (*sdk.CallToolResult, tools.GetCallHierarchyOutput, error) {
+	if input.FilePath == "" || input.Symbol == "" {
+		return nil, tools.GetCallHierarchyOutput{}, errors.New("file_path and symbol are required")
+	}
+	if err := s.Initialize(ctx); err != nil {
+		return nil, tools.GetCallHierarchyOutput{}, err
+	}
+
+	// Set defaults
+	direction := input.Direction
+	if direction == "" {
+		direction = "both"
+	}
+	if direction != "incoming" && direction != "outgoing" && direction != "both" {
+		return nil, tools.GetCallHierarchyOutput{}, errors.New("direction must be 'incoming', 'outgoing', or 'both'")
+	}
+
+	// Read file from disk
+	absPath, err := s.resolveDiskPath(input.FilePath)
+	if err != nil {
+		return nil, tools.GetCallHierarchyOutput{}, err
+	}
+	code, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, tools.GetCallHierarchyOutput{}, err
+	}
+
+	// Find symbol position
+	line, col, ok := tools.FindSymbolPosition(string(code), input.Symbol)
+	if !ok {
+		return nil, tools.GetCallHierarchyOutput{}, errors.New("symbol not found in file")
+	}
+
+	// Prepare document
+	_, uri, err := s.prepareDocument(ctx, absPath, string(code))
+	if err != nil {
+		return nil, tools.GetCallHierarchyOutput{}, err
+	}
+	s.warmupDocument(ctx, uri)
+
+	// Step 1: Prepare call hierarchy
+	prepareParams := map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"position":     map[string]any{"line": line - 1, "character": col - 1},
+	}
+	prepareRaw, err := s.client.SendRequest(ctx, "textDocument/prepareCallHierarchy", prepareParams)
+	if err != nil {
+		return nil, tools.GetCallHierarchyOutput{}, err
+	}
+
+	items, err := tools.ParseCallHierarchyPrepare(prepareRaw)
+	if err != nil {
+		return nil, tools.GetCallHierarchyOutput{}, err
+	}
+	if len(items) == 0 {
+		return nil, tools.GetCallHierarchyOutput{}, errors.New("no call hierarchy item found for symbol")
+	}
+
+	item := items[0]
+	output := tools.GetCallHierarchyOutput{
+		Name:     item.Name,
+		Kind:     tools.SymbolKindToString(item.Kind),
+		FilePath: tools.URIToPath(item.URI),
+		Line:     item.Line(),
+	}
+
+	// Step 2: Get incoming calls (callers)
+	if direction == "incoming" || direction == "both" {
+		incomingParams := map[string]any{
+			"item": tools.ConvertToLSPCallHierarchyItem(item),
+		}
+		if incomingRaw, err := s.client.SendRequest(ctx, "callHierarchy/incomingCalls", incomingParams); err == nil {
+			if incoming, err := tools.ParseCallHierarchyIncoming(incomingRaw); err == nil {
+				// Add context for each caller
+				for i := range incoming {
+					incoming[i].Context = getLineContent(incoming[i].FilePath, incoming[i].Line)
+				}
+				output.Incoming = incoming
+			}
+		}
+	}
+
+	// Step 3: Get outgoing calls (callees)
+	if direction == "outgoing" || direction == "both" {
+		outgoingParams := map[string]any{
+			"item": tools.ConvertToLSPCallHierarchyItem(item),
+		}
+		if outgoingRaw, err := s.client.SendRequest(ctx, "callHierarchy/outgoingCalls", outgoingParams); err == nil {
+			if outgoing, err := tools.ParseCallHierarchyOutgoing(outgoingRaw); err == nil {
+				// Add context for each callee
+				for i := range outgoing {
+					outgoing[i].Context = getLineContent(outgoing[i].FilePath, outgoing[i].Line)
+				}
+				output.Outgoing = outgoing
 			}
 		}
 	}

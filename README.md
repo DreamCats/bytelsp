@@ -10,6 +10,7 @@
 | 工具 | 功能 | 说明 |
 |------|------|------|
 | `explain_symbol` | 一站式符号分析 | 签名+文档+源码+引用，推荐使用 |
+| `get_call_hierarchy` | 调用链分析 | 查看谁调用了函数/函数调用了谁 |
 | `analyze_code` | 代码诊断 | 错误/警告/提示 |
 | `go_to_definition` | 跳转定义 | 支持行列号或符号名 |
 | `find_references` | 查找引用 | 支持行列号或符号名 |
@@ -115,6 +116,46 @@ go build -o byte-lsp-mcp
 | `include_source` | ❌ | 是否包含源码（默认 true） |
 | `include_references` | ❌ | 是否包含引用（默认 true） |
 | `max_references` | ❌ | 最大引用数量（默认 10） |
+
+### get_call_hierarchy
+
+分析函数/方法的调用关系。
+
+```json
+{
+  "name": "get_call_hierarchy",
+  "arguments": {
+    "file_path": "internal/mcp/server.go",
+    "symbol": "Initialize",
+    "direction": "both"
+  }
+}
+```
+
+返回示例：
+
+```json
+{
+  "name": "Initialize",
+  "kind": "Method",
+  "file_path": "internal/mcp/server.go",
+  "line": 139,
+  "incoming": [
+    { "name": "AnalyzeCode", "kind": "Method", "file_path": "server.go", "line": 168, "context": "if err := s.Initialize(ctx); err != nil {" }
+  ],
+  "outgoing": [
+    { "name": "NewClient", "kind": "Function", "file_path": "client.go", "line": 25 },
+    { "name": "NewDocumentManager", "kind": "Function", "file_path": "documents.go", "line": 10 }
+  ]
+}
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | ✅ | 文件路径 |
+| `symbol` | ✅ | 函数或方法名 |
+| `direction` | ❌ | 方向：'incoming'(调用者)/'outgoing'(被调用)/'both'(默认) |
+| `depth` | ❌ | 遍历深度（默认 1，暂只支持 1 层） |
 
 ### analyze_code
 

@@ -128,3 +128,32 @@ type ExplainSymbolOutput struct {
 	ReferencesCount int                `json:"references_count,omitempty"` // Total number of references
 	References      []ReferenceContext `json:"references,omitempty"`       // Sample references with context
 }
+
+// GetCallHierarchyInput for get_call_hierarchy.
+type GetCallHierarchyInput struct {
+	FilePath  string `json:"file_path" jsonschema:"required,description=File path where the function/method is located."`
+	Symbol    string `json:"symbol" jsonschema:"required,description=Function or method name to analyze."`
+	Direction string `json:"direction,omitempty" jsonschema:"description=Call direction: 'incoming' (callers), 'outgoing' (callees), or 'both'. Default: 'both'."`
+	Depth     int    `json:"depth,omitempty" jsonschema:"description=Maximum depth to traverse. Default: 1 (direct calls only)."`
+}
+
+// CallHierarchyItem represents a function/method in the call hierarchy.
+type CallHierarchyItem struct {
+	Name     string    `json:"name"`
+	Kind     string    `json:"kind"`
+	FilePath string    `json:"file_path"`
+	Line     int       `json:"line"`
+	Col      int       `json:"col"`
+	Detail   string    `json:"detail,omitempty"` // Package or receiver type
+	Context  string    `json:"context,omitempty"` // The call site code
+}
+
+// GetCallHierarchyOutput contains the call hierarchy for a symbol.
+type GetCallHierarchyOutput struct {
+	Name     string              `json:"name"`
+	Kind     string              `json:"kind"`
+	FilePath string              `json:"file_path"`
+	Line     int                 `json:"line"`
+	Incoming []CallHierarchyItem `json:"incoming,omitempty"` // Functions that call this
+	Outgoing []CallHierarchyItem `json:"outgoing,omitempty"` // Functions called by this
+}
