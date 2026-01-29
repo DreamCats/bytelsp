@@ -176,6 +176,22 @@ go build -o byte-lsp-mcp
 | `symbol` | ✅ | 函数或方法名 |
 | `direction` | ❌ | 'incoming'/'outgoing'/'both'（默认） |
 
+## MCP 工具 Token 开销
+
+byte-lsp-mcp 提供 4 个 MCP 工具，每次 API 调用会携带工具定义（JSON Schema），预估 token 开销如下：
+
+| Tool | Description | Fields | Total |
+|------|-------------|--------|-------|
+| `search_symbols` | 121 | 39 | 160 |
+| `explain_symbol` | 106 | 86 | 192 |
+| `get_call_hierarchy` | 96 | 63 | 159 |
+| `explain_import` | 159 | 35 | 194 |
+| **Subtotal** | 482 | 223 | 705 |
+| JSON Schema Overhead | - | - | 315 |
+| **Total** | - | - | **~1,020** |
+
+> **说明**: Token 估算使用 chars/4 近似方法，实际值可能有 ±20% 偏差。这是每次 API 调用的固定成本。
+
 ## 架构
 
 ```
