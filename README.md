@@ -35,6 +35,9 @@ Gopls Client (LSP stdio, Content-Length framing)
 # 直接安装（需要 Go 1.20+）
 go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
 
+# 从 GitLab 安装（公司内网）
+go install git@code.byted.org:maifeng/bytelsp.git/cmd/byte-lsp-mcp@latest
+
 # 构建二进制
 cd cmd/byte-lsp-mcp && go build -o byte-lsp-mcp
 ```
@@ -48,6 +51,12 @@ GOPROXY=direct \
 GOPRIVATE=github.com/dreamcats/bytelsp \
 GONOSUMDB=github.com/dreamcats/bytelsp \
 go install github.com/dreamcats/bytelsp/cmd/byte-lsp-mcp@latest
+```
+
+或者直接从 GitLab 安装：
+
+```bash
+go install git@code.byted.org:maifeng/bytelsp.git/cmd/byte-lsp-mcp@latest
 ```
 
 ## 命令行参数
