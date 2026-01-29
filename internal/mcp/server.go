@@ -56,28 +56,75 @@ func (s *Service) Close() error {
 
 func (s *Service) Register(server *sdk.Server) {
 	sdk.AddTool(server, &sdk.Tool{
-		Name:        "analyze_code",
-		Description: "Analyze Go code and return diagnostics (errors/warnings/info) using gopls.",
+		Name: "analyze_code",
+		Description: `Analyze Go code for compilation errors and diagnostics.
+
+Use this to:
+- Check if code compiles correctly
+- Find syntax errors, type mismatches, undefined references
+- Get warnings about unused variables, shadowed imports, etc.
+
+Returns: List of diagnostics with location, severity, and message.`,
 	}, s.AnalyzeCode)
 
 	sdk.AddTool(server, &sdk.Tool{
-		Name:        "go_to_definition",
-		Description: "Go to definition. Provide file_path and either symbol (recommended) or line/col (1-based). Set use_disk=true to read file content from disk.",
+		Name: "go_to_definition",
+		Description: `Navigate to where a symbol (function, type, variable, method) is defined.
+
+Use this to:
+- Find the implementation of a function
+- Locate type/struct definitions
+- Trace where a variable is declared
+
+Recommended usage: file_path + symbol + use_disk=true
+Alternative: file_path + line/col + code
+
+Returns: Definition location(s) with file path and position.`,
 	}, s.GoToDefinition)
 
 	sdk.AddTool(server, &sdk.Tool{
-		Name:        "find_references",
-		Description: "Find references. Provide file_path and either symbol (recommended) or line/col (1-based). Set use_disk=true to read file content from disk.",
+		Name: "find_references",
+		Description: `Find all references to a symbol across the codebase.
+
+Use this to:
+- See where a function is called
+- Find all usages of a type or variable
+- Understand impact before refactoring
+
+Recommended usage: file_path + symbol + use_disk=true
+Alternative: file_path + line/col + code
+
+Returns: List of reference locations with file paths and positions.`,
 	}, s.FindReferences)
 
 	sdk.AddTool(server, &sdk.Tool{
-		Name:        "search_symbols",
-		Description: "Search symbols by name in the workspace (optionally include external symbols).",
+		Name: "search_symbols",
+		Description: `Search for symbols (functions, types, variables) by name pattern.
+
+Use this to:
+- Find a function when you know part of its name
+- Discover available types matching a pattern
+- Explore the codebase structure
+
+Supports partial matching (e.g., "Handler" finds "RequestHandler", "ErrorHandler").
+Default: workspace only. Set include_external=true for stdlib/dependencies.
+
+Returns: List of matching symbols with kind, location, and container.`,
 	}, s.SearchSymbols)
 
 	sdk.AddTool(server, &sdk.Tool{
-		Name:        "get_hover",
-		Description: "Get hover info. Provide file_path and either symbol (recommended) or line/col (1-based). Set use_disk=true to read file content from disk.",
+		Name: "get_hover",
+		Description: `Get type information and documentation for a symbol.
+
+Use this to:
+- View function signatures and parameter types
+- Read documentation comments (godoc)
+- Understand what a type or variable represents
+
+Recommended usage: file_path + symbol + use_disk=true
+Alternative: file_path + line/col + code
+
+Returns: Type signature and documentation text.`,
 	}, s.GetHover)
 
 	server.AddResource(&sdk.Resource{
