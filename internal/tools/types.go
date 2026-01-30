@@ -2,9 +2,9 @@ package tools
 
 // AnalyzeCodeInput for analyze_code.
 type AnalyzeCodeInput struct {
-	Code            string `json:"code" jsonschema:"required,description=Go source code to analyze"`
-	FilePath        string `json:"file_path" jsonschema:"required,description=File path (absolute or workspace-relative). Used for module context resolution."`
-	IncludeWarnings bool   `json:"include_warnings,omitempty" jsonschema:"description=Include warnings/info/hints in addition to errors. Default: false (errors only)."`
+	Code            string `json:"code" jsonschema:"Go source code to analyze"`
+	FilePath        string `json:"file_path" jsonschema:"File path (absolute or workspace-relative). Used for module context resolution."`
+	IncludeWarnings bool   `json:"include_warnings,omitempty" jsonschema:"Include warnings/info/hints in addition to errors. Default: false (errors only)."`
 }
 
 type Diagnostic struct {
@@ -26,12 +26,12 @@ type AnalyzeCodeOutput struct {
 
 // GoToDefinitionInput for go_to_definition.
 type GoToDefinitionInput struct {
-	FilePath string `json:"file_path" jsonschema:"required,description=File path (absolute or workspace-relative) where the symbol is located."`
-	Symbol   string `json:"symbol,omitempty" jsonschema:"description=Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
-	Line     int    `json:"line,omitempty" jsonschema:"description=1-based line number. Required if symbol is not provided."`
-	Col      int    `json:"col,omitempty" jsonschema:"description=1-based column number. Required if symbol is not provided."`
-	Code     string `json:"code,omitempty" jsonschema:"description=Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
-	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"description=Deprecated: file is now read from disk by default. This field is ignored."`
+	FilePath string `json:"file_path" jsonschema:"File path (absolute or workspace-relative) where the symbol is located."`
+	Symbol   string `json:"symbol,omitempty" jsonschema:"Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
+	Line     int    `json:"line,omitempty" jsonschema:"1-based line number. Required if symbol is not provided."`
+	Col      int    `json:"col,omitempty" jsonschema:"1-based column number. Required if symbol is not provided."`
+	Code     string `json:"code,omitempty" jsonschema:"Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
+	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"Deprecated: file is now read from disk by default. This field is ignored."`
 }
 
 type Location struct {
@@ -48,13 +48,13 @@ type GoToDefinitionOutput struct {
 
 // FindReferencesInput for find_references.
 type FindReferencesInput struct {
-	FilePath           string `json:"file_path" jsonschema:"required,description=File path (absolute or workspace-relative) where the symbol is located."`
-	Symbol             string `json:"symbol,omitempty" jsonschema:"description=Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
-	Line               int    `json:"line,omitempty" jsonschema:"description=1-based line number. Required if symbol is not provided."`
-	Col                int    `json:"col,omitempty" jsonschema:"description=1-based column number. Required if symbol is not provided."`
-	Code               string `json:"code,omitempty" jsonschema:"description=Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
-	UseDisk            bool   `json:"use_disk,omitempty" jsonschema:"description=Deprecated: file is now read from disk by default. This field is ignored."`
-	IncludeDeclaration bool   `json:"include_declaration,omitempty" jsonschema:"description=Include the symbol declaration in results. Default: false."`
+	FilePath           string `json:"file_path" jsonschema:"File path (absolute or workspace-relative) where the symbol is located."`
+	Symbol             string `json:"symbol,omitempty" jsonschema:"Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
+	Line               int    `json:"line,omitempty" jsonschema:"1-based line number. Required if symbol is not provided."`
+	Col                int    `json:"col,omitempty" jsonschema:"1-based column number. Required if symbol is not provided."`
+	Code               string `json:"code,omitempty" jsonschema:"Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
+	UseDisk            bool   `json:"use_disk,omitempty" jsonschema:"Deprecated: file is now read from disk by default. This field is ignored."`
+	IncludeDeclaration bool   `json:"include_declaration,omitempty" jsonschema:"Include the symbol declaration in results. Default: false."`
 }
 
 type ReferenceResult struct {
@@ -68,8 +68,8 @@ type FindReferencesOutput struct {
 
 // SearchSymbolsInput for search_symbols.
 type SearchSymbolsInput struct {
-	Query           string `json:"query" jsonschema:"required,description=Symbol name or pattern to search (e.g. 'Handler' or 'New*')."`
-	IncludeExternal bool   `json:"include_external,omitempty" jsonschema:"description=Include symbols from stdlib and dependencies. Default: false (workspace only)."`
+	Query           string `json:"query" jsonschema:"Symbol name or pattern to search (e.g. 'Handler' or 'New*')."`
+	IncludeExternal bool   `json:"include_external,omitempty" jsonschema:"Include symbols from stdlib and dependencies. Default: false (workspace only)."`
 }
 
 type SymbolInformation struct {
@@ -87,12 +87,12 @@ type SearchSymbolsOutput struct {
 
 // GetHoverInput for get_hover.
 type GetHoverInput struct {
-	FilePath string `json:"file_path" jsonschema:"required,description=File path (absolute or workspace-relative) where the symbol is located."`
-	Symbol   string `json:"symbol,omitempty" jsonschema:"description=Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
-	Line     int    `json:"line,omitempty" jsonschema:"description=1-based line number. Required if symbol is not provided."`
-	Col      int    `json:"col,omitempty" jsonschema:"description=1-based column number. Required if symbol is not provided."`
-	Code     string `json:"code,omitempty" jsonschema:"description=Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
-	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"description=Deprecated: file is now read from disk by default. This field is ignored."`
+	FilePath string `json:"file_path" jsonschema:"File path (absolute or workspace-relative) where the symbol is located."`
+	Symbol   string `json:"symbol,omitempty" jsonschema:"Symbol name (function/type/variable) to find. Recommended: simpler than specifying line/col."`
+	Line     int    `json:"line,omitempty" jsonschema:"1-based line number. Required if symbol is not provided."`
+	Col      int    `json:"col,omitempty" jsonschema:"1-based column number. Required if symbol is not provided."`
+	Code     string `json:"code,omitempty" jsonschema:"Go source code. Only needed if file doesn't exist on disk (e.g. unsaved buffer)."`
+	UseDisk  bool   `json:"use_disk,omitempty" jsonschema:"Deprecated: file is now read from disk by default. This field is ignored."`
 }
 
 type GetHoverOutput struct {
@@ -102,11 +102,11 @@ type GetHoverOutput struct {
 
 // ExplainSymbolInput for explain_symbol.
 type ExplainSymbolInput struct {
-	FilePath          string `json:"file_path" jsonschema:"required,description=File path (absolute or workspace-relative) where the symbol is located."`
-	Symbol            string `json:"symbol" jsonschema:"required,description=Symbol name (function/type/variable/method) to explain."`
-	IncludeSource     bool   `json:"include_source,omitempty" jsonschema:"description=Include the source code of the symbol definition. Default: true."`
-	IncludeReferences bool   `json:"include_references,omitempty" jsonschema:"description=Include references to this symbol. Default: true."`
-	MaxReferences     int    `json:"max_references,omitempty" jsonschema:"description=Maximum number of references to return. Default: 10."`
+	FilePath          string `json:"file_path" jsonschema:"File path (absolute or workspace-relative) where the symbol is located."`
+	Symbol            string `json:"symbol" jsonschema:"Symbol name (function/type/variable/method) to explain."`
+	IncludeSource     bool   `json:"include_source,omitempty" jsonschema:"Include the source code of the symbol definition. Default: true."`
+	IncludeReferences bool   `json:"include_references,omitempty" jsonschema:"Include references to this symbol. Default: true."`
+	MaxReferences     int    `json:"max_references,omitempty" jsonschema:"Maximum number of references to return. Default: 10."`
 }
 
 // ReferenceContext contains a reference with surrounding context.
@@ -131,8 +131,8 @@ type ExplainSymbolOutput struct {
 
 // ExplainImportInput for explain_import.
 type ExplainImportInput struct {
-	ImportPath string `json:"import_path" jsonschema:"required,description=Go import path (e.g. 'github.com/xxx/idl/user' or 'encoding/json')."`
-	Symbol     string `json:"symbol" jsonschema:"required,description=Type or function name to explain (e.g. 'GetUserInfoRequest')."`
+	ImportPath string `json:"import_path" jsonschema:"Go import path (e.g. 'github.com/xxx/idl/user' or 'encoding/json')."`
+	Symbol     string `json:"symbol" jsonschema:"Type or function name to explain (e.g. 'GetUserInfoRequest')."`
 }
 
 // FieldInfo represents a struct field.
@@ -158,10 +158,10 @@ type ExplainImportOutput struct {
 
 // GetCallHierarchyInput for get_call_hierarchy.
 type GetCallHierarchyInput struct {
-	FilePath  string `json:"file_path" jsonschema:"required,description=File path where the function/method is located."`
-	Symbol    string `json:"symbol" jsonschema:"required,description=Function or method name to analyze."`
-	Direction string `json:"direction,omitempty" jsonschema:"description=Call direction: 'incoming' (callers), 'outgoing' (callees), or 'both'. Default: 'both'."`
-	Depth     int    `json:"depth,omitempty" jsonschema:"description=Maximum depth to traverse. Default: 1 (direct calls only)."`
+	FilePath  string `json:"file_path" jsonschema:"File path where the function/method is located."`
+	Symbol    string `json:"symbol" jsonschema:"Function or method name to analyze."`
+	Direction string `json:"direction,omitempty" jsonschema:"Call direction: 'incoming' (callers), 'outgoing' (callees), or 'both'. Default: 'both'."`
+	Depth     int    `json:"depth,omitempty" jsonschema:"Maximum depth to traverse. Default: 1 (direct calls only)."`
 }
 
 // CallHierarchyItem represents a function/method in the call hierarchy.
