@@ -30,22 +30,78 @@ type PackageInfo struct {
 }
 
 // ResolveImportPath resolves an import path to its directory on disk.
+// First tries go list, then falls back to scanning local cache.
 func ResolveImportPath(workdir, importPath string) (*PackageInfo, error) {
+	// 1. Try go list first
 	cmd := exec.Command("go", "list", "-json", importPath)
 	cmd.Dir = workdir
 	cmd.Env = os.Environ()
 
 	out, err := cmd.Output()
+	if err == nil {
+		var pkg PackageInfo
+		if err := json.Unmarshal(out, &pkg); err != nil {
+			return nil, fmt.Errorf("parse go list output: %w", err)
+		}
+		return &pkg, nil
+	}
+
+	// 2. Fallback: resolve from local cache
+	return resolveFromLocalCache(importPath)
+}
+
+// resolveFromLocalCache scans ~/go/pkg/mod and GOPATH/src for the package.
+func resolveFromLocalCache(importPath string) (*PackageInfo, error) {
+	var searchPaths []string
+
+	// Path A: ~/go/pkg/mod/<import_path>
+	home, err := os.UserHomeDir()
+	if err == nil {
+		searchPaths = append(searchPaths, filepath.Join(home, "go", "pkg", "mod", importPath))
+	}
+
+	// Path B: $(go env GOPATH)/src/<importPath>
+	gopathBytes, gopathErr := exec.Command("go", "env", "GOPATH").Output()
+	if gopathErr == nil && len(gopathBytes) > 0 {
+		gopath := strings.TrimSpace(string(gopathBytes))
+		searchPaths = append(searchPaths, filepath.Join(gopath, "src", importPath))
+	}
+
+	// Search all paths
+	for _, dir := range searchPaths {
+		pkg, scanErr := scanLocalPackage(dir)
+		if scanErr == nil {
+			return pkg, nil
+		}
+	}
+
+	return nil, fmt.Errorf("package not found in local cache: %s", importPath)
+}
+
+// scanLocalPackage scans a directory for Go files.
+func scanLocalPackage(dir string) (*PackageInfo, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("go list %s: %w", importPath, err)
+		return nil, err
 	}
 
-	var pkg PackageInfo
-	if err := json.Unmarshal(out, &pkg); err != nil {
-		return nil, fmt.Errorf("parse go list output: %w", err)
+	var goFiles []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
+			goFiles = append(goFiles, e.Name())
+		}
 	}
 
-	return &pkg, nil
+	if len(goFiles) == 0 {
+		return nil, fmt.Errorf("no Go files in %s", dir)
+	}
+
+	return &PackageInfo{
+		Dir:        dir,
+		ImportPath: "", // Unknown for local cache
+		GoFiles:    goFiles,
+		Module:     nil,
+	}, nil
 }
 
 // ParseSymbolFromPackage parses a symbol from a package directory.
